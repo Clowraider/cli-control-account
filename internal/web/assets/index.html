@@ -306,6 +306,260 @@ body {
   color: var(--text-quaternary);
 }
 
+.btn-edit-prefix {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-quaternary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 3px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.btn-edit-prefix:hover {
+  color: #58a6ff;
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.btn-edit-prefix:active {
+  transform: scale(0.95);
+}
+
+.btn-edit-prefix svg {
+  display: block;
+}
+
+/* Modal Backdrop & Dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: scale(0.96) translateY(-8px);
+  transition: transform 0.2s ease;
+}
+
+.modal-backdrop.open .modal-container {
+  transform: scale(1) translateY(0);
+}
+
+.modal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.modal-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-quaternary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.modal-close-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.modal-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-input:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.15);
+}
+
+.form-help {
+  font-size: 11px;
+  color: var(--text-quaternary);
+  line-height: 1.4;
+}
+
+.modal-error {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  color: var(--meter-text-critical);
+  font-size: 11.5px;
+}
+
+.modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.btn-secondary {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-secondary:hover {
+  background: #30363d;
+  color: var(--text-primary);
+  border-color: #8b949e;
+}
+
+.btn-primary {
+  background: #238636;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s;
+}
+
+.btn-primary:hover {
+  background: #2ea043;
+}
+
+.btn-primary:disabled, .btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Toast Notifications */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left: 3px solid #238636;
+  color: var(--text-primary);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: toastIn 0.2s ease;
+}
+
+.toast.toast-error {
+  border-left-color: #f85149;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Card Body */
 .card-body {
   display: flex;
@@ -358,6 +612,244 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+/* Card Mini Activity Sparkline */
+.card-activity-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px dashed #282e37;
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+}
+
+.activity-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.activity-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.activity-meta strong {
+  color: var(--text-primary);
+}
+
+.activity-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  align-items: flex-end;
+  background: rgba(13, 17, 23, 0.6);
+  border-radius: 4px;
+  padding: 2px;
+  border: 1px solid rgba(48, 54, 61, 0.4);
+}
+
+.activity-col {
+  flex: 1;
+  height: 100%;
+  background: var(--bg-surface);
+  border-radius: 1.5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.activity-col:hover {
+  transform: scaleY(1.1);
+  filter: brightness(1.2);
+}
+
+.activity-seg-success {
+  background: var(--meter-green);
+  width: 100%;
+}
+
+.activity-seg-failed {
+  background: var(--meter-critical);
+  width: 100%;
+}
+
+.activity-col-idle {
+  background: rgba(48, 54, 61, 0.25);
+}
+
+/* Global Throughput Panel */
+.throughput-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.throughput-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.throughput-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.throughput-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.throughput-kpi-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.kpi-badge {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kpi-badge .kpi-label {
+  color: var(--text-muted);
+}
+
+.kpi-badge .kpi-val {
+  font-family: var(--font-mono);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.kpi-badge .kpi-val.success {
+  color: var(--meter-text-green);
+}
+
+.kpi-badge .kpi-val.warning {
+  color: var(--meter-text-warning);
+}
+
+.kpi-badge .kpi-val.critical {
+  color: var(--meter-text-critical);
+}
+
+.throughput-chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.throughput-bars {
+  display: flex;
+  gap: 3px;
+  height: 52px;
+  align-items: flex-end;
+  background: rgba(13, 17, 23, 0.7);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 6px;
+  position: relative;
+}
+
+.throughput-bar-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.throughput-bar-col:hover {
+  opacity: 0.85;
+}
+
+.throughput-bar-col.active {
+  box-shadow: 0 0 0 1px #58a6ff;
+}
+
+.bar-seg-success {
+  background: var(--meter-green);
+  width: 100%;
+  transition: height 0.3s ease;
+}
+
+.bar-seg-failed {
+  background: var(--meter-critical);
+  width: 100%;
+  transition: height 0.3s ease;
+}
+
+.bar-idle-tick {
+  width: 100%;
+  height: 2px;
+  background: rgba(48, 54, 61, 0.4);
+  border-radius: 1px;
+}
+
+.throughput-time-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-quaternary);
+  padding: 0 2px;
+}
+
+.throughput-tooltip {
+  position: absolute;
+  top: -46px;
+  background: #1c2128;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transform: translateX(-50%);
+  z-index: 50;
 }
 
 .meter-header {
@@ -486,6 +978,50 @@ body {
       </div>
     </header>
 
+    <!-- Global Throughput & Availability Panel -->
+    <section id="throughput-panel" class="throughput-panel">
+      <div class="throughput-header">
+        <div class="throughput-title-wrap">
+          <span style="color:#58a6ff;">📊</span>
+          <span class="throughput-title">Throughput &amp; Availability</span>
+          <span id="throughput-window-label" style="font-size:11px; color:var(--text-quaternary); font-family:var(--font-mono);">(Past ~3.3h)</span>
+        </div>
+        <div class="throughput-kpi-row">
+          <div class="kpi-badge">
+            <span class="kpi-label">Total:</span>
+            <span id="kpi-total-reqs" class="kpi-val">0</span>
+          </div>
+          <div class="kpi-badge">
+            <span class="kpi-label">Success:</span>
+            <span id="kpi-success-reqs" class="kpi-val success">0</span>
+          </div>
+          <div class="kpi-badge">
+            <span class="kpi-label">Failed:</span>
+            <span id="kpi-failed-reqs" class="kpi-val critical">0</span>
+          </div>
+          <div class="kpi-badge">
+            <span class="kpi-label">Success Rate:</span>
+            <span id="kpi-success-rate" class="kpi-val success">100%</span>
+          </div>
+          <div class="kpi-badge">
+            <span class="kpi-label">Peak:</span>
+            <span id="kpi-peak-reqs" class="kpi-val">0</span>
+          </div>
+        </div>
+      </div>
+      <div class="throughput-chart-container">
+        <div id="throughput-bars" class="throughput-bars">
+          <!-- Injected by JavaScript -->
+        </div>
+        <div id="throughput-time-axis" class="throughput-time-axis">
+          <span id="time-axis-start">-200m</span>
+          <span id="time-axis-mid">-100m</span>
+          <span id="time-axis-now">Now</span>
+        </div>
+        <div id="throughput-tooltip" class="throughput-tooltip" style="display: none;"></div>
+      </div>
+    </section>
+
     <!-- Filter Tabs & Sort Row -->
     <div class="tabs-row">
       <nav class="tabs-list" role="tablist">
@@ -536,6 +1072,37 @@ body {
     </main>
   </div>
 
+  <!-- Prefix Edit Modal -->
+  <div id="prefix-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 id="modal-title" class="modal-title">Modificar perfil / prefijo</h3>
+          <span id="modal-subtitle" class="modal-subtitle"></span>
+        </div>
+        <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modal-prefix-input" class="form-label">Prefijo (prefix)</label>
+          <input type="text" id="modal-prefix-input" class="form-input" placeholder="ej. team-alpha, pro-1" autocomplete="off" />
+          <div class="form-help">Los espacios se reemplazarán automáticamente por guiones ("-"). Dejar vacío para eliminar el prefijo.</div>
+        </div>
+        <div id="modal-error-msg" class="modal-error" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-cancel-btn" class="btn-secondary">Cancelar</button>
+        <button id="modal-save-btn" class="btn-primary">
+          <span id="modal-save-spinner" class="spinning" style="display: none; margin-right: 4px;">🔄</span>
+          <span id="modal-save-text">Guardar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
   <script>
 (function () {
   'use strict';
@@ -543,7 +1110,10 @@ body {
   let currentTab = 'all';
   let currentSort = 'default';
   let authFiles = [];
+  let apiKeyUsage = {};
   let quotaStore = {};
+
+  const BUCKET_COUNT = 20;
 
   const ANTIGRAVITY_QUOTA_URLS = [
     'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
@@ -561,9 +1131,21 @@ body {
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   const sortSelect = document.getElementById('sort-select');
 
+  let activeModalFile = null;
+  const modalBackdrop = document.getElementById('prefix-modal');
+  const modalSubtitle = document.getElementById('modal-subtitle');
+  const modalPrefixInput = document.getElementById('modal-prefix-input');
+  const modalErrorMsg = document.getElementById('modal-error-msg');
+  const modalCloseBtn = document.getElementById('modal-close-btn');
+  const modalCancelBtn = document.getElementById('modal-cancel-btn');
+  const modalSaveBtn = document.getElementById('modal-save-btn');
+  const modalSaveSpinner = document.getElementById('modal-save-spinner');
+  const modalSaveText = document.getElementById('modal-save-text');
+
   function init() {
     setupTabListeners();
     setupSortListener();
+    setupModalListeners();
     btnRefreshAll.addEventListener('click', refreshAll);
     loadAuthFiles();
   }
@@ -574,6 +1156,7 @@ body {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentTab = tab.dataset.provider.toLowerCase();
+        renderThroughputPanel();
         render();
       });
     });
@@ -653,20 +1236,32 @@ body {
   async function loadAuthFiles() {
     try {
       const res = await apiFetch('/v0/management/auth-files');
-      if (!res.ok) throw new Error('Failed to load files');
+      if (!res.ok) throw new Error('Status ' + res.status);
       const json = await res.json();
       authFiles = json.files || [];
+
+      // Try fetching api-key-usage in background without blocking
+      apiFetch('/v0/management/api-key-usage')
+        .then(r => r.ok ? r.json() : {})
+        .then(data => {
+          if (data && typeof data === 'object') {
+            apiKeyUsage = data;
+            renderThroughputPanel();
+          }
+        })
+        .catch(() => {});
 
       // Download content for each file to inspect prefix / project_id / raw attributes
       await Promise.allSettled(authFiles.map(file => fetchFileDetails(file)));
 
       updateTabCounts();
+      renderThroughputPanel();
       render();
 
       // Trigger quota fetch for each credential
       refreshAll();
     } catch (err) {
-      console.error('Error loading auth files:', err);
+      console.error('Error in loadAuthFiles:', err);
       grid.innerHTML = `<div class="state-box">Failed to load credentials from Management API.</div>`;
     }
   }
@@ -1012,6 +1607,243 @@ body {
     document.getElementById('stat-loaded').textContent = loaded;
   }
 
+  function normalizeBuckets(rawBuckets) {
+    if (!Array.isArray(rawBuckets)) return [];
+    return rawBuckets.slice(-BUCKET_COUNT).map(b => ({
+      time: b && typeof b.time === 'string' ? b.time : undefined,
+      success: b ? (Number(b.success) || 0) : 0,
+      failed: b ? (Number(b.failed) || 0) : 0,
+    }));
+  }
+
+  function mergeBucketGroups(groups) {
+    if (!Array.isArray(groups) || groups.length === 0) return [];
+    const validGroups = groups.map(g => normalizeBuckets(g)).filter(g => g.length > 0);
+    if (validGroups.length === 0) return [];
+    const maxLen = Math.min(BUCKET_COUNT, Math.max(...validGroups.map(g => g.length)));
+    const merged = Array.from({ length: maxLen }, () => ({ success: 0, failed: 0, time: undefined }));
+
+    validGroups.forEach(group => {
+      const tail = group.slice(-maxLen);
+      const offset = maxLen - tail.length;
+      tail.forEach((b, idx) => {
+        const target = merged[offset + idx];
+        if (target && b) {
+          target.success += b.success;
+          target.failed += b.failed;
+          if (!target.time && b.time) target.time = b.time;
+        }
+      });
+    });
+    return merged;
+  }
+
+  function collectRecentRequestGroups(providerFilter) {
+    const bucketGroups = [];
+
+    // 1. From authFiles
+    (authFiles || []).forEach(file => {
+      if (!file) return;
+      const p = (file.type || file.provider || 'antigravity').toLowerCase();
+      if (providerFilter !== 'all' && p !== providerFilter) return;
+
+      const rawRecents = file.recent_requests || file.recentRequests || file._raw?.recent_requests || file._raw?.recentRequests;
+      if (Array.isArray(rawRecents) && rawRecents.length > 0) {
+        bucketGroups.push(rawRecents);
+      }
+    });
+
+    // 2. From apiKeyUsage
+    if (apiKeyUsage && typeof apiKeyUsage === 'object') {
+      Object.entries(apiKeyUsage).forEach(([provKey, entries]) => {
+        const normProv = String(provKey || '').trim().toLowerCase();
+        if (providerFilter !== 'all' && normProv !== providerFilter) return;
+
+        if (entries && typeof entries === 'object') {
+          Object.values(entries).forEach(entry => {
+            const rawRecents = entry?.recent_requests || entry?.recentRequests;
+            if (Array.isArray(rawRecents) && rawRecents.length > 0) {
+              bucketGroups.push(rawRecents);
+            }
+          });
+        }
+      });
+    }
+
+    return bucketGroups;
+  }
+
+  function renderThroughputPanel() {
+    try {
+      const bucketGroups = collectRecentRequestGroups(currentTab);
+      const mergedBuckets = mergeBucketGroups(bucketGroups);
+
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      let peakTotal = 0;
+
+      const paddedBuckets = Array.from({ length: Math.max(BUCKET_COUNT, mergedBuckets.length) }, (_, i) => {
+        const offset = Math.max(0, BUCKET_COUNT - mergedBuckets.length);
+        const item = mergedBuckets[i - offset];
+        return item || { success: 0, failed: 0, time: undefined };
+      });
+
+      paddedBuckets.forEach(b => {
+        if (!b) return;
+        totalSuccess += b.success;
+        totalFailed += b.failed;
+        const bTotal = b.success + b.failed;
+        if (bTotal > peakTotal) peakTotal = bTotal;
+      });
+
+      const totalReqs = totalSuccess + totalFailed;
+      const successRate = totalReqs > 0 ? ((totalSuccess / totalReqs) * 100) : 100;
+      const rateFormatted = totalReqs > 0 ? `${successRate.toFixed(1).replace('.0', '')}%` : '100%';
+
+      // Update KPI badges
+      const elTotal = document.getElementById('kpi-total-reqs');
+      const elSuccess = document.getElementById('kpi-success-reqs');
+      const elFailed = document.getElementById('kpi-failed-reqs');
+      const elRate = document.getElementById('kpi-success-rate');
+      const elPeak = document.getElementById('kpi-peak-reqs');
+
+      if (elTotal) elTotal.textContent = totalReqs.toLocaleString();
+      if (elSuccess) elSuccess.textContent = totalSuccess.toLocaleString();
+      if (elFailed) elFailed.textContent = totalFailed.toLocaleString();
+      if (elPeak) elPeak.textContent = peakTotal.toLocaleString();
+      if (elRate) {
+        elRate.textContent = rateFormatted;
+        elRate.className = 'kpi-val ' + (totalReqs === 0 || successRate >= 90 ? 'success' : successRate >= 50 ? 'warning' : 'critical');
+      }
+
+      // Render bars
+      const barsContainer = document.getElementById('throughput-bars');
+      const tooltip = document.getElementById('throughput-tooltip');
+
+      if (barsContainer) {
+        const scaleMax = peakTotal > 0 ? peakTotal : 1;
+        barsContainer.innerHTML = paddedBuckets.map((bucket, index) => {
+          const bTotal = (bucket?.success || 0) + (bucket?.failed || 0);
+          const successPct = Math.round(((bucket?.success || 0) / scaleMax) * 100);
+          const failedPct = Math.round(((bucket?.failed || 0) / scaleMax) * 100);
+
+          return `
+            <div class="throughput-bar-col" data-index="${index}" data-success="${bucket?.success || 0}" data-failed="${bucket?.failed || 0}" data-time="${escapeHtml(bucket?.time || '')}">
+              ${bTotal === 0 ? '<span class="bar-idle-tick"></span>' : ''}
+              ${(bucket?.failed || 0) > 0 ? `<div class="bar-seg-failed" style="height:${failedPct}%;"></div>` : ''}
+              ${(bucket?.success || 0) > 0 ? `<div class="bar-seg-success" style="height:${successPct}%;"></div>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        // Tooltip hover interactions
+        const cols = barsContainer.querySelectorAll('.throughput-bar-col');
+        cols.forEach(col => {
+          col.addEventListener('mouseenter', () => {
+            cols.forEach(c => c.classList.remove('active'));
+            col.classList.add('active');
+
+            const s = Number(col.dataset.success) || 0;
+            const f = Number(col.dataset.failed) || 0;
+            const t = col.dataset.time;
+            const total = s + f;
+            const rate = total > 0 ? ((s / total) * 100).toFixed(1) + '%' : 'Idle';
+
+            if (tooltip) {
+              const timeStr = t ? t : `Bucket ${Number(col.dataset.index) + 1}`;
+              tooltip.innerHTML = `
+                <strong>${escapeHtml(timeStr)}</strong> &middot; ${total} reqs
+                <span style="color:var(--meter-text-green); margin-left:4px;">${s} ok</span>
+                ${f > 0 ? `<span style="color:var(--meter-text-critical); margin-left:4px;">${f} err</span>` : ''}
+                (${rate})
+              `;
+              tooltip.style.left = `${col.offsetLeft + col.offsetWidth / 2}px`;
+              tooltip.style.display = 'block';
+            }
+          });
+
+          col.addEventListener('mouseleave', () => {
+            col.classList.remove('active');
+            if (tooltip) tooltip.style.display = 'none';
+          });
+        });
+      }
+
+      // Time axis labels from available bucket times
+      const firstTime = paddedBuckets.find(b => b && b.time)?.time;
+      const lastTime = [...paddedBuckets].reverse().find(b => b && b.time)?.time;
+      if (firstTime && document.getElementById('time-axis-start')) {
+        document.getElementById('time-axis-start').textContent = firstTime.split('-')[0] || '-200m';
+      }
+      if (lastTime && document.getElementById('time-axis-now')) {
+        document.getElementById('time-axis-now').textContent = lastTime.split('-')[1] || 'Now';
+      }
+    } catch (e) {
+      console.error('Error rendering throughput panel:', e);
+    }
+  }
+
+  function renderCardMiniActivity(file) {
+    try {
+      const rawRecents = file?.recent_requests || file?.recentRequests || file?._raw?.recent_requests || file?._raw?.recentRequests || [];
+      const buckets = normalizeBuckets(rawRecents);
+      const padded = Array.from({ length: BUCKET_COUNT }, (_, i) => {
+        const offset = Math.max(0, BUCKET_COUNT - buckets.length);
+        return buckets[i - offset] || { success: 0, failed: 0 };
+      });
+
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      let peak = 0;
+
+      padded.forEach(b => {
+        if (!b) return;
+        totalSuccess += b.success;
+        totalFailed += b.failed;
+        const tot = b.success + b.failed;
+        if (tot > peak) peak = tot;
+      });
+
+      const totalReqs = totalSuccess + totalFailed;
+      const rate = totalReqs > 0 ? Math.round((totalSuccess / totalReqs) * 100) : 100;
+      const scale = peak > 0 ? peak : 1;
+
+      const colsHtml = padded.map(b => {
+        const s = b ? (Number(b.success) || 0) : 0;
+        const f = b ? (Number(b.failed) || 0) : 0;
+        const bTot = s + f;
+        if (bTot === 0) {
+          return `<div class="activity-col activity-col-idle" title="Idle (no requests)"></div>`;
+        }
+        const sPct = Math.round((s / scale) * 100);
+        const fPct = Math.round((f / scale) * 100);
+        return `
+          <div class="activity-col" title="${b?.time || ''}: ${s} ok, ${f} failed">
+            ${f > 0 ? `<div class="activity-seg-failed" style="height:${fPct}%;"></div>` : ''}
+            ${s > 0 ? `<div class="activity-seg-success" style="height:${sPct}%;"></div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="card-activity-wrap">
+          <div class="activity-header">
+            <span class="activity-title">Activity (~3.3h)</span>
+            <span class="activity-meta">
+              <strong>${totalReqs}</strong> reqs &middot; <span style="color:${totalReqs === 0 || rate >= 90 ? 'var(--meter-text-green)' : rate >= 50 ? 'var(--meter-text-warning)' : 'var(--meter-text-critical)'};">${rate}% ok</span>
+            </span>
+          </div>
+          <div class="activity-bar">
+            ${colsHtml}
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.error('Error rendering mini activity:', e);
+      return '';
+    }
+  }
+
   function sortFiles(list) {
     if (currentSort === 'default') {
       return [...list];
@@ -1062,6 +1894,142 @@ body {
     return list;
   }
 
+  function sanitizePrefix(val) {
+    if (!val) return '';
+    return val.trim().replace(/\s+/g, '-');
+  }
+
+  function setupModalListeners() {
+    if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeEditModal);
+    if (modalCancelBtn) modalCancelBtn.addEventListener('click', closeEditModal);
+    if (modalSaveBtn) modalSaveBtn.addEventListener('click', handleSavePrefix);
+
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener('click', (e) => {
+        if (e.target === modalBackdrop) closeEditModal();
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalBackdrop && modalBackdrop.classList.contains('open')) {
+        closeEditModal();
+      }
+    });
+
+    if (modalPrefixInput) {
+      modalPrefixInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleSavePrefix();
+        }
+      });
+      modalPrefixInput.addEventListener('blur', () => {
+        modalPrefixInput.value = sanitizePrefix(modalPrefixInput.value);
+      });
+    }
+  }
+
+  function openEditModal(fileName, currentPrefix) {
+    activeModalFile = fileName;
+    if (modalSubtitle) modalSubtitle.textContent = fileName;
+    if (modalPrefixInput) {
+      modalPrefixInput.value = currentPrefix || '';
+    }
+    if (modalErrorMsg) {
+      modalErrorMsg.style.display = 'none';
+      modalErrorMsg.textContent = '';
+    }
+    setModalLoading(false);
+    if (modalBackdrop) {
+      modalBackdrop.classList.add('open');
+    }
+    setTimeout(() => {
+      if (modalPrefixInput) {
+        modalPrefixInput.focus();
+        modalPrefixInput.select();
+      }
+    }, 50);
+  }
+
+  function closeEditModal() {
+    if (modalBackdrop) {
+      modalBackdrop.classList.remove('open');
+    }
+    activeModalFile = null;
+  }
+
+  function setModalLoading(isLoading) {
+    if (modalSaveBtn) modalSaveBtn.disabled = isLoading;
+    if (modalCancelBtn) modalCancelBtn.disabled = isLoading;
+    if (modalCloseBtn) modalCloseBtn.disabled = isLoading;
+    if (modalPrefixInput) modalPrefixInput.disabled = isLoading;
+    if (modalSaveSpinner) modalSaveSpinner.style.display = isLoading ? 'inline-block' : 'none';
+    if (modalSaveText) modalSaveText.textContent = isLoading ? 'Guardando...' : 'Guardar';
+  }
+
+  async function handleSavePrefix() {
+    if (!activeModalFile) return;
+    const rawVal = modalPrefixInput ? modalPrefixInput.value : '';
+    const sanitized = sanitizePrefix(rawVal);
+    if (modalPrefixInput) modalPrefixInput.value = sanitized;
+
+    setModalLoading(true);
+    if (modalErrorMsg) modalErrorMsg.style.display = 'none';
+
+    try {
+      const res = await apiFetch('/v0/management/auth-files/fields', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: activeModalFile,
+          prefix: sanitized,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `Error HTTP ${res.status}`);
+      }
+
+      // Update in-memory file objects
+      const targetFile = authFiles.find(f => f.name === activeModalFile);
+      if (targetFile) {
+        targetFile.prefix = sanitized;
+        if (targetFile._raw) {
+          if (sanitized) {
+            targetFile._raw.prefix = sanitized;
+          } else {
+            delete targetFile._raw.prefix;
+          }
+        }
+      }
+
+      closeEditModal();
+      render();
+      showToast(`Prefijo de "${activeModalFile}" actualizado a "${sanitized || '-'}"`);
+    } catch (err) {
+      if (modalErrorMsg) {
+        modalErrorMsg.textContent = err.message || 'Error al guardar el prefijo';
+        modalErrorMsg.style.display = 'block';
+      }
+      setModalLoading(false);
+    }
+  }
+
+  function showToast(message, isError = false) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${isError ? 'toast-error' : ''}`;
+    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      toast.style.transition = 'opacity 0.2s, transform 0.2s';
+      setTimeout(() => toast.remove(), 200);
+    }, 3000);
+  }
+
   function render() {
     const filtered = authFiles.filter(f => {
       if (currentTab === 'all') return true;
@@ -1084,6 +2052,15 @@ body {
         btn.addEventListener('click', () => fetchFileQuota(file));
       }
     });
+
+    grid.querySelectorAll('.btn-edit-prefix').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fName = btn.dataset.filename;
+        const curPrefix = btn.dataset.prefix;
+        openEditModal(fName, curPrefix);
+      });
+    });
   }
 
   function renderCard(file) {
@@ -1095,6 +2072,9 @@ body {
     const prefixDisplay = prefix.trim() !== ''
       ? `<span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(prefix)}</span>`
       : `<span class="prefix-label">Prefix:</span><span class="prefix-dash">-</span>`;
+
+    const editPencilSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
+    const editBtn = `<button class="btn-edit-prefix" data-filename="${escapeHtml(fileName)}" data-prefix="${escapeHtml(prefix)}" title="${prefix ? 'Modificar perfil / prefijo' : 'Agregar perfil / prefijo'}" aria-label="Edit prefix">${editPencilSvg}</button>`;
 
     const iconChar = provider === 'claude' ? '✳' : provider === 'codex' ? '⬡' : provider === 'kimi' ? 'K' : provider === 'xai' ? '⊘' : '▲';
     const iconColor = provider === 'claude' ? 'var(--brand-claude)' : provider === 'codex' ? 'var(--brand-codex)' : provider === 'kimi' ? 'var(--brand-kimi)' : provider === 'xai' ? 'var(--brand-xai)' : 'var(--brand-antigravity)';
@@ -1151,6 +2131,7 @@ body {
             <span class="file-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
             <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
               ${prefixDisplay}
+              ${editBtn}
             </div>
           </div>
         </header>
@@ -1161,6 +2142,7 @@ body {
             <span class="plan-badge">${escapeHtml(quota.plan || 'Pro')}</span>
           </div>
           ${bodyContent}
+          ${renderCardMiniActivity(file)}
         </div>
 
         <footer class="card-footer">

@@ -160,6 +160,30 @@ func TestAccountQuota_FormattedPrefix(t *testing.T) {
 	}
 }
 
+func TestSanitizePrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"empty", "", ""},
+		{"whitespace only", "   ", ""},
+		{"already sanitized", "team-alpha", "team-alpha"},
+		{"single space replaced", "team alpha", "team-alpha"},
+		{"multiple spaces collapsed", "team   beta  gamma", "team-beta-gamma"},
+		{"leading and trailing spaces", "  my profile  ", "my-profile"},
+		{"tabs and newlines", "team\talpha\npro", "team-alpha-pro"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SanitizePrefix(tt.input); got != tt.expected {
+				t.Errorf("SanitizePrefix(%q) = %q; want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestQuotaSummary_FilterByProvider(t *testing.T) {
 	accounts := []AccountQuota{
 		{ID: "1", Name: "acc-claude", Provider: ProviderClaude, Prefix: "team-1"},

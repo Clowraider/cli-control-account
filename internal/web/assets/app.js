@@ -91,6 +91,7 @@
       const id = item.id || item.filename || item.name || `account-${idx + 1}`;
       const provider = (item.provider || item.type || 'claude').toLowerCase();
       const prefix = item.prefix || item.account_prefix || '';
+      const recent_requests = item.recent_requests || item.recentRequests || [];
       
       const windows = (item.quota_windows || item.windows || [
         {
@@ -106,7 +107,7 @@
         resetsAt: new Date(w.resets_at || w.reset_at || w.resetsAt || Date.now() + 3600000),
       }));
 
-      return { id, provider, prefix, windows };
+      return { id, provider, prefix, windows, recent_requests };
     });
   }
 
@@ -235,7 +236,11 @@
       ? `<span class="account-prefix-text">${escapeHtml(account.prefix)}</span>`
       : `<span class="prefix-fallback">-</span>`;
 
+    const editPencilSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
+    const editBtn = `<button class="btn-edit-prefix" data-filename="${escapeHtml(account.id)}" data-prefix="${escapeHtml(account.prefix || '')}" title="${account.prefix ? 'Modificar perfil / prefijo' : 'Agregar perfil / prefijo'}" aria-label="Edit prefix">${editPencilSvg}</button>`;
+
     const windowsHtml = (account.windows || []).map((w, idx) => renderWindowItem(w, account.id, idx)).join('');
+    const activityHtml = renderAccountMiniActivity(account);
 
     return `
       <article class="quota-card" data-account-id="${escapeHtml(account.id)}">
@@ -246,12 +251,72 @@
           </div>
           <div class="account-prefix-container" title="Account Prefix: ${escapeHtml(account.prefix || 'None')}">
             ${prefixDisplay}
+            ${editBtn}
           </div>
         </div>
         <div class="card-body">
           ${windowsHtml}
+          ${activityHtml}
         </div>
       </article>
+    `;
+  }
+
+  // Render Mini Activity Sparkline for Single Account
+  function renderAccountMiniActivity(account) {
+    const rawRecents = account.recent_requests || [];
+    const buckets = Array.isArray(rawRecents) ? rawRecents.slice(-20) : [];
+    const padded = Array.from({ length: 20 }, (_, i) => {
+      const offset = Math.max(0, 20 - buckets.length);
+      return buckets[i - offset] || { success: 0, failed: 0 };
+    });
+
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    let peak = 0;
+
+    padded.forEach((b) => {
+      const s = Number(b.success) || 0;
+      const f = Number(b.failed) || 0;
+      totalSuccess += s;
+      totalFailed += f;
+      const tot = s + f;
+      if (tot > peak) peak = tot;
+    });
+
+    const totalReqs = totalSuccess + totalFailed;
+    const rate = totalReqs > 0 ? Math.round((totalSuccess / totalReqs) * 100) : 100;
+    const scale = peak > 0 ? peak : 1;
+
+    const colsHtml = padded.map((b) => {
+      const s = Number(b.success) || 0;
+      const f = Number(b.failed) || 0;
+      const tot = s + f;
+      if (tot === 0) {
+        return `<div class="activity-col activity-col-idle" title="Idle (no requests)"></div>`;
+      }
+      const sPct = Math.round((s / scale) * 100);
+      const fPct = Math.round((f / scale) * 100);
+      return `
+        <div class="activity-col" title="${b.time || ''}: ${s} ok, ${f} failed">
+          ${f > 0 ? `<div class="activity-seg-failed" style="height:${fPct}%;"></div>` : ''}
+          ${s > 0 ? `<div class="activity-seg-success" style="height:${sPct}%;"></div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="card-activity-wrap">
+        <div class="activity-header">
+          <span class="activity-title">Activity (~3.3h)</span>
+          <span class="activity-meta">
+            <strong>${totalReqs}</strong> reqs &middot; <span style="color:${totalReqs === 0 || rate >= 90 ? 'var(--color-success)' : rate >= 50 ? 'var(--color-warning)' : 'var(--color-danger)'};">${rate}% ok</span>
+          </span>
+        </div>
+        <div class="activity-bar">
+          ${colsHtml}
+        </div>
+      </div>
     `;
   }
 

@@ -91,6 +91,16 @@ func (aq AccountQuota) HasPrefix() bool {
 	return strings.TrimSpace(aq.Prefix) != ""
 }
 
+// SanitizePrefix trims whitespace and replaces internal whitespace sequences with single hyphens.
+func SanitizePrefix(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return ""
+	}
+	fields := strings.Fields(trimmed)
+	return strings.Join(fields, "-")
+}
+
 // QuotaSummary represents an aggregated response of multiple accounts and their quota.
 type QuotaSummary struct {
 	TotalAccounts int            `json:"total_accounts"`
