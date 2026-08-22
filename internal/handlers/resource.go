@@ -89,11 +89,11 @@ func (h *ResourceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	default:
 		// Clean and check arbitrary asset subpath
 		clean := path.Clean(relPath)
-		if clean == "." || strings.HasPrefix(clean, "..") {
-			h.writeJSONError(rw, "resource not found", http.StatusNotFound, req.URL.Path)
-			return
+		if clean == "." || clean == "/" || strings.HasPrefix(clean, "..") {
+			assetName = "index.html"
+		} else {
+			assetName = clean
 		}
-		assetName = clean
 	}
 
 	data, mimeType, err := web.GetAsset(assetName)

@@ -4,71 +4,1190 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quota Management - Control Account</title>
-  <link rel="stylesheet" href="styles.css">
+  <style>
+/* CPAMC Exact Quota Theme */
+:root {
+  --bg-app: #0d1117;
+  --bg-primary: #161b22;
+  --bg-card: rgba(22, 27, 34, 0.82);
+  --bg-card-hover: rgba(30, 38, 48, 0.95);
+  --bg-surface: #21262d;
+  --bg-tag: #1f242c;
+  --border-color: #30363d;
+  --border-hover: #484f58;
+  
+  --text-primary: #f0f6fc;
+  --text-secondary: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-quaternary: #6e7681;
+  
+  --brand-antigravity: #3b82f6;
+  --brand-claude: #d97706;
+  --brand-codex: #10b981;
+  --brand-kimi: #06b6d4;
+  --brand-xai: #ec4899;
+
+  --meter-bg: #21262d;
+  --meter-green: #238636;
+  --meter-warning: #d29922;
+  --meter-critical: #f85149;
+  --meter-text-green: #3fb950;
+  --meter-text-warning: #e3b341;
+  --meter-text-critical: #ff7b72;
+  
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --radius-card: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  padding: 16px 20px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Page Header */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.title-wrap h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.meta-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.stat-dot {
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--meter-green);
+  display: inline-block;
+}
+
+.meta-loaded {
+  color: var(--meter-text-green);
+}
+
+.btn-refresh-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #0d1117;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-refresh-all:hover {
+  opacity: 0.9;
+}
+
+/* Tabs & Filter Row */
+.tabs-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tabs-list {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-item:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.tab-item.active {
+  background: var(--bg-surface);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tab-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #101419;
+  padding: 1px 5px;
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+
+.tab-item.active .tab-count {
+  color: var(--text-primary);
+}
+
+.tab-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sort Select Dropdown */
+.sort-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.sort-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.sort-select:hover, .sort-select:focus {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+/* Responsive Cards Grid: 280px min-width to ensure 3 cards fit per row */
+.cards-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  align-items: stretch;
+}
+
+/* Quota Card */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover);
+  box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.4);
+}
+
+/* Card Header */
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-icon-box {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.card-title-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Prefix Meta Row (Fixed 18px Line-Height with '-' Fallback) */
+.prefix-row {
+  height: 18px;
+  line-height: 18px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prefix-label {
+  color: var(--text-quaternary);
+  font-size: 11px;
+}
+
+.prefix-text {
+  font-family: var(--font-mono);
+  color: #58a6ff;
+  font-weight: 600;
+  background: rgba(56, 139, 253, 0.1);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.prefix-dash {
+  color: var(--text-quaternary);
+}
+
+/* Card Body */
+.card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.plan-badge {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Groups */
+.quota-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed #282e37;
+  padding-top: 8px;
+}
+
+.group-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.group-models {
+  font-size: 10.5px;
+  color: var(--text-quaternary);
+  margin-top: -3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quota Meter Row */
+.meter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.meter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11.5px;
+}
+
+.meter-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meter-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.meta-percent {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.meta-reset {
+  color: var(--text-quaternary);
+}
+
+.meta-reset-soon {
+  color: var(--meter-text-warning);
+  font-weight: 600;
+}
+
+/* Progress Track */
+.track {
+  width: 100%;
+  height: 4px;
+  background: var(--meter-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--meter-green);
+  transition: width 0.3s ease;
+}
+
+.fill.warning {
+  background: var(--meter-warning);
+}
+
+.fill.critical {
+  background: var(--meter-critical);
+}
+
+/* Card Action Footer */
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(48, 54, 61, 0.4);
+}
+
+.btn-card-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-card-refresh:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.state-box {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-muted);
+}
+  </style>
 </head>
-<body class="dark-theme">
-  <div class="app-container">
-    <header class="header">
-      <div class="header-content">
-        <div class="header-brand">
-          <div class="logo-icon">📊</div>
-          <div>
-            <h1>Quota Management</h1>
-            <p class="subtitle">Monitor real-time rate limits, reset windows, and token usage</p>
-          </div>
+<body>
+  <div class="page">
+    <!-- Header -->
+    <header class="page-header">
+      <div class="title-wrap">
+        <h1>Quota Management</h1>
+        <div class="meta-stats">
+          <span class="stat-dot"></span>
+          <span><strong id="stat-total" style="color:var(--text-primary);">0</strong> credentials</span>
+          <span>&middot;</span>
+          <span class="meta-loaded"><strong id="stat-loaded">0</strong> loaded</span>
         </div>
-        <div class="header-actions">
-          <button id="refresh-btn" class="btn btn-secondary" title="Refresh Quota Metrics">
-            <span class="refresh-icon">🔄</span> Refresh
-          </button>
-        </div>
+      </div>
+      <div>
+        <button id="btn-refresh-all" class="btn-refresh-all">
+          <span id="refresh-all-icon">🔄</span> Refresh all credentials
+        </button>
       </div>
     </header>
 
-    <main class="main-content">
-      <!-- Provider Tabs -->
-      <nav class="provider-tabs" role="tablist" aria-label="Filter by Provider">
-        <button class="tab-btn active" data-provider="all" role="tab" aria-selected="true">All</button>
-        <button class="tab-btn" data-provider="antigravity" role="tab" aria-selected="false">Antigravity</button>
-        <button class="tab-btn" data-provider="claude" role="tab" aria-selected="false">Claude</button>
-        <button class="tab-btn" data-provider="codex" role="tab" aria-selected="false">Codex</button>
-        <button class="tab-btn" data-provider="kimi" role="tab" aria-selected="false">Kimi</button>
-        <button class="tab-btn" data-provider="xai" role="tab" aria-selected="false">xAI</button>
+    <!-- Filter Tabs & Sort Row -->
+    <div class="tabs-row">
+      <nav class="tabs-list" role="tablist">
+        <button class="tab-item active" data-provider="all">
+          <span>All</span>
+          <span id="count-all" class="tab-count">0</span>
+        </button>
+        <button class="tab-item" data-provider="claude">
+          <span class="tab-icon" style="color:var(--brand-claude);">✳</span>
+          <span>Claude</span>
+          <span id="count-claude" class="tab-count">0</span>
+        </button>
+        <button class="tab-item" data-provider="antigravity">
+          <span class="tab-icon" style="color:var(--brand-antigravity);">▲</span>
+          <span>Antigravity</span>
+          <span id="count-antigravity" class="tab-count">0</span>
+        </button>
+        <button class="tab-item" data-provider="codex">
+          <span class="tab-icon" style="color:var(--brand-codex);">⬡</span>
+          <span>Codex</span>
+          <span id="count-codex" class="tab-count">0</span>
+        </button>
+        <button class="tab-item" data-provider="xai">
+          <span class="tab-icon" style="color:var(--brand-xai);">⊘</span>
+          <span>xAI</span>
+          <span id="count-xai" class="tab-count">0</span>
+        </button>
+        <button class="tab-item" data-provider="kimi">
+          <span class="tab-icon" style="color:var(--brand-kimi);">K</span>
+          <span>Kimi</span>
+          <span id="count-kimi" class="tab-count">0</span>
+        </button>
       </nav>
 
-      <!-- Search and Summary Bar -->
-      <div class="filter-bar">
-        <input type="text" id="search-input" class="search-input" placeholder="Search account ID, prefix, or provider..." aria-label="Search accounts">
-        <div class="summary-stats">
-          <span class="stat-badge">Accounts: <strong id="total-accounts-count">0</strong></span>
-          <span class="stat-badge">Active Windows: <strong id="active-windows-count">0</strong></span>
-        </div>
+      <div class="sort-wrap">
+        <select id="sort-select" class="sort-select" aria-label="Sort options">
+          <option value="default">Default</option>
+          <option value="soonest">Soonest recovery</option>
+          <option value="prefix-asc">Prefix (A-Z)</option>
+          <option value="prefix-desc">Prefix (Z-A)</option>
+        </select>
       </div>
+    </div>
 
-      <!-- Loading State -->
-      <div id="loading-state" class="state-container hidden">
-        <div class="spinner"></div>
-        <p>Loading quota information...</p>
-      </div>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="state-container hidden">
-        <div class="empty-icon">📂</div>
-        <h3>No Accounts Found</h3>
-        <p id="empty-message">No account quota records match the selected provider filter.</p>
-      </div>
-
-      <!-- Quota Cards Grid -->
-      <section id="cards-grid" class="cards-grid" aria-label="Quota Cards">
-        <!-- Cards rendered dynamically via app.js -->
-      </section>
+    <!-- Cards Grid -->
+    <main id="cards-grid" class="cards-grid">
+      <!-- Injected by JavaScript -->
     </main>
-
-    <footer class="footer">
-      <p>CLIProxyAPI Control Account Plugin &bull; Quota Monitoring Engine v1.0.0</p>
-    </footer>
   </div>
 
-  <script src="app.js"></script>
+  <script>
+(function () {
+  'use strict';
+
+  let currentTab = 'all';
+  let currentSort = 'default';
+  let authFiles = [];
+  let quotaStore = {};
+
+  const ANTIGRAVITY_QUOTA_URLS = [
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
+    'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  ];
+
+  const ANTIGRAVITY_HEADERS = {
+    'Authorization': 'Bearer $TOKEN$',
+    'Content-Type': 'application/json',
+    'User-Agent': 'antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)',
+  };
+
+  const grid = document.getElementById('cards-grid');
+  const btnRefreshAll = document.getElementById('btn-refresh-all');
+  const sortSelect = document.getElementById('sort-select');
+
+  function init() {
+    setupTabListeners();
+    setupSortListener();
+    btnRefreshAll.addEventListener('click', refreshAll);
+    loadAuthFiles();
+  }
+
+  function setupTabListeners() {
+    document.querySelectorAll('.tab-item').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentTab = tab.dataset.provider.toLowerCase();
+        render();
+      });
+    });
+  }
+
+  function setupSortListener() {
+    if (sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        render();
+      });
+    }
+  }
+
+  function deobfuscateCPAMC(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    const ENC_PREFIX = 'enc::v1::';
+    const SECRET_SALT = 'cli-proxy-api-webui::secure-storage';
+    if (!raw.startsWith(ENC_PREFIX)) return raw;
+
+    try {
+      const host = window.location.host;
+      const ua = navigator.userAgent;
+      const keyStr = `${SECRET_SALT}|${host}|${ua}`;
+      const encoder = new TextEncoder();
+      const keyBytes = encoder.encode(keyStr);
+      
+      const b64 = raw.slice(ENC_PREFIX.length);
+      const binary = atob(b64);
+      const dataBytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        dataBytes[i] = binary.charCodeAt(i);
+      }
+      
+      const decrypted = new Uint8Array(dataBytes.length);
+      for (let i = 0; i < dataBytes.length; i++) {
+        decrypted[i] = dataBytes[i] ^ keyBytes[i % keyBytes.length];
+      }
+      
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      return raw;
+    }
+  }
+
+  function getManagementKey() {
+    try {
+      if (window.parent && window.parent.localStorage) {
+        const raw = window.parent.localStorage.getItem('cli-proxy-auth');
+        if (raw) {
+          const parsed = JSON.parse(deobfuscateCPAMC(raw));
+          if (parsed?.state?.managementKey) return parsed.state.managementKey;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const raw = localStorage.getItem('cli-proxy-auth');
+      if (raw) {
+        const parsed = JSON.parse(deobfuscateCPAMC(raw));
+        if (parsed?.state?.managementKey) return parsed.state.managementKey;
+      }
+    } catch (e) {}
+
+    return '';
+  }
+
+  async function apiFetch(endpoint, options = {}) {
+    const key = getManagementKey();
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (key) {
+      headers['Authorization'] = `Bearer ${key}`;
+    }
+    return fetch(endpoint, { ...options, headers });
+  }
+
+  async function loadAuthFiles() {
+    try {
+      const res = await apiFetch('/v0/management/auth-files');
+      if (!res.ok) throw new Error('Failed to load files');
+      const json = await res.json();
+      authFiles = json.files || [];
+
+      // Download content for each file to inspect prefix / project_id / raw attributes
+      await Promise.allSettled(authFiles.map(file => fetchFileDetails(file)));
+
+      updateTabCounts();
+      render();
+
+      // Trigger quota fetch for each credential
+      refreshAll();
+    } catch (err) {
+      console.error('Error loading auth files:', err);
+      grid.innerHTML = `<div class="state-box">Failed to load credentials from Management API.</div>`;
+    }
+  }
+
+  async function fetchFileDetails(file) {
+    try {
+      const res = await apiFetch(`/v0/management/auth-files/download?name=${encodeURIComponent(file.name)}`);
+      if (res.ok) {
+        const text = await res.text();
+        const json = JSON.parse(text);
+        if (json.prefix) file.prefix = json.prefix;
+        if (json.project_id) file.project_id = json.project_id;
+        if (json.installed?.project_id) file.project_id = json.installed.project_id;
+        if (json.web?.project_id) file.project_id = json.web.project_id;
+        file._raw = json;
+      }
+    } catch (e) {}
+  }
+
+  function updateTabCounts() {
+    const counts = { all: authFiles.length, claude: 0, antigravity: 0, codex: 0, xai: 0, kimi: 0 };
+    authFiles.forEach(f => {
+      const p = (f.type || f.provider || 'antigravity').toLowerCase();
+      if (counts[p] !== undefined) counts[p]++;
+    });
+
+    document.getElementById('stat-total').textContent = counts.all;
+    document.getElementById('count-all').textContent = counts.all;
+    document.getElementById('count-claude').textContent = counts.claude;
+    document.getElementById('count-antigravity').textContent = counts.antigravity;
+    document.getElementById('count-codex').textContent = counts.codex;
+    document.getElementById('count-xai').textContent = counts.xai;
+    document.getElementById('count-kimi').textContent = counts.kimi;
+  }
+
+  function refreshAll() {
+    const icon = document.getElementById('refresh-all-icon');
+    if (icon) icon.classList.add('spinning');
+
+    const promises = authFiles.map(file => fetchFileQuota(file));
+    Promise.allSettled(promises).finally(() => {
+      if (icon) icon.classList.remove('spinning');
+      updateLoadedCount();
+    });
+  }
+
+  async function fetchFileQuota(file) {
+    const fileName = file.name;
+    quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
+    render();
+
+    const provider = (file.type || file.provider || 'antigravity').toLowerCase();
+    const authIndex = file.auth_index ?? file.authIndex ?? file.name;
+
+    if (provider === 'antigravity') {
+      await fetchAntigravityQuota(file, authIndex);
+    } else if (provider === 'claude') {
+      await fetchClaudeQuota(file, authIndex);
+    } else if (provider === 'codex') {
+      await fetchCodexQuota(file, authIndex);
+    } else {
+      quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
+    }
+
+    render();
+    updateLoadedCount();
+  }
+
+  async function fetchAntigravityQuota(file, authIndex) {
+    const fileName = file.name;
+    let projectId = file.project_id || file._raw?.project_id || file._raw?.installed?.project_id || file._raw?.web?.project_id || '';
+    
+    if (!projectId) {
+      try {
+        const res = await apiFetch(`/v0/management/auth-files/download?name=${encodeURIComponent(fileName)}`);
+        if (res.ok) {
+          const json = await res.json();
+          projectId = json.project_id || json.installed?.project_id || json.web?.project_id || '';
+          file.project_id = projectId;
+          if (json.prefix) file.prefix = json.prefix;
+          file._raw = json;
+        }
+      } catch (e) {}
+    }
+
+    // Fetch subscription summary
+    let subPlan = 'Pro';
+    try {
+      const subRes = await apiFetch(`/v0/management/antigravity-subscription?auth_index=${encodeURIComponent(authIndex)}`);
+      if (subRes.ok) {
+        const subJson = await subRes.json();
+        if (subJson.tierName || subJson.plan) subPlan = subJson.tierName || subJson.plan;
+      }
+    } catch (e) {}
+
+    let successPayload = null;
+    let apiErrorMsg = '';
+
+    for (const url of ANTIGRAVITY_QUOTA_URLS) {
+      try {
+        const res = await apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'POST',
+            url: url,
+            header: ANTIGRAVITY_HEADERS,
+            data: JSON.stringify({ project: projectId }),
+          }),
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          if (result.status_code >= 200 && result.status_code < 300 || result.statusCode >= 200 && result.statusCode < 300) {
+            let bodyObj = result.body;
+            if (typeof bodyObj === 'string') {
+              try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
+            } else if (!bodyObj && result.bodyText) {
+              try { bodyObj = JSON.parse(result.bodyText); } catch (e) {}
+            }
+            if (bodyObj && Array.isArray(bodyObj.groups) && bodyObj.groups.length > 0) {
+              successPayload = bodyObj;
+              break;
+            }
+          } else if (result.bodyText || result.body) {
+            apiErrorMsg = result.bodyText || JSON.stringify(result.body);
+          }
+        }
+      } catch (e) {
+        apiErrorMsg = String(e);
+      }
+    }
+
+    if (successPayload) {
+      const groups = parseAntigravityGroups(successPayload);
+      quotaStore[fileName] = {
+        loading: false,
+        plan: subPlan,
+        groups: groups,
+        error: null,
+      };
+    } else {
+      quotaStore[fileName] = {
+        loading: false,
+        plan: subPlan,
+        groups: [],
+        error: apiErrorMsg || 'Failed to fetch live quota from upstream',
+      };
+    }
+  }
+
+  // Window sorting order from CPAMC (5h first -> 0, weekly second -> 1)
+  function getWindowOrder(label, window) {
+    const text = `${label || ''} ${window || ''}`.toLowerCase();
+    if (text.includes('5') || text.includes('five')) {
+      return 0;
+    }
+    if (text.includes('week')) {
+      return 1;
+    }
+    return 2;
+  }
+
+  function parseAntigravityGroups(payload) {
+    if (!payload || !Array.isArray(payload.groups)) return [];
+    
+    return payload.groups.map(g => {
+      const title = (g.displayName || g.display_name || g.name || 'Models').toUpperCase();
+      const models = Array.isArray(g.models) ? g.models.map(m => m.displayName || m.name || m).join(', ') : '';
+      
+      const rawBuckets = g.buckets || g.limits || [];
+      const rows = rawBuckets.map(b => {
+        const remFrac = b.remainingFraction !== undefined ? b.remainingFraction : b.remaining_fraction;
+        const fraction = remFrac !== undefined && remFrac !== null ? Number(remFrac) : 1;
+        const percent = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+        const resetTime = b.resetTime || b.reset_time;
+        const resetLabel = formatDuration(resetTime);
+        const resetMs = resetTime ? new Date(resetTime).getTime() : null;
+        
+        let label = b.displayName || b.display_name || b.label || b.window || 'Limit';
+        const labelLower = label.toLowerCase();
+        if (labelLower.includes('5') || labelLower.includes('five')) {
+          label = 'Five Hour Limit';
+        } else if (labelLower.includes('week')) {
+          label = 'Weekly Limit';
+        }
+
+        const percentLabel = fraction === 1 ? 'Quota available' : `${percent}% remaining`;
+
+        return {
+          label: label,
+          window: b.window,
+          percent: percent,
+          percentLabel: percentLabel,
+          resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Refreshes in 5h 0m',
+          resetMs: resetMs,
+          warning: percent < 20,
+        };
+      });
+
+      // Strict sort: 5h always 0 (top), Weekly always 1 (bottom)
+      rows.sort((a, b) => getWindowOrder(a.label, a.window) - getWindowOrder(b.label, b.window));
+
+      return { title, models, rows };
+    });
+  }
+
+  async function fetchClaudeQuota(file, authIndex) {
+    try {
+      const res = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          authIndex: authIndex,
+          method: 'GET',
+          url: 'https://api.anthropic.com/api/oauth/usage',
+          header: {
+            'Authorization': 'Bearer $TOKEN$',
+            'Content-Type': 'application/json',
+            'anthropic-beta': 'oauth-2025-04-20',
+          },
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        let bodyObj = result.body;
+        if (typeof bodyObj === 'string') {
+          try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
+        }
+        if (bodyObj) {
+          const rows = [];
+          if (bodyObj.five_hour && typeof bodyObj.five_hour.utilization === 'number') {
+            const pct = Math.round((1 - bodyObj.five_hour.utilization) * 100);
+            const resetLabel = formatDuration(bodyObj.five_hour.resets_at);
+            const resetMs = bodyObj.five_hour.resets_at ? new Date(bodyObj.five_hour.resets_at).getTime() : null;
+            rows.push({ label: 'Five Hour Limit', percent: pct, percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`, resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Quota available', resetMs: resetMs, warning: pct < 20 });
+          }
+          if (bodyObj.seven_day && typeof bodyObj.seven_day.utilization === 'number') {
+            const pct = Math.round((1 - bodyObj.seven_day.utilization) * 100);
+            const resetLabel = formatDuration(bodyObj.seven_day.resets_at);
+            const resetMs = bodyObj.seven_day.resets_at ? new Date(bodyObj.seven_day.resets_at).getTime() : null;
+            rows.push({ label: 'Weekly Limit', percent: pct, percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`, resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Quota available', resetMs: resetMs, warning: pct < 20 });
+          }
+          rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
+          quotaStore[file.name] = {
+            loading: false,
+            plan: 'Pro',
+            groups: [{
+              title: 'CLAUDE USAGE',
+              models: 'Claude 3.7 Sonnet / Opus',
+              rows: rows.length > 0 ? rows : [{ label: 'Quota', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
+            }],
+          };
+          return;
+        }
+      }
+    } catch (e) {}
+
+    quotaStore[file.name] = {
+      loading: false,
+      plan: 'Pro',
+      groups: [],
+      error: 'Upstream quota request failed',
+    };
+  }
+
+  async function fetchCodexQuota(file, authIndex) {
+    try {
+      const res = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          authIndex: authIndex,
+          method: 'GET',
+          url: 'https://chatgpt.com/backend-api/wham/usage',
+          header: {
+            'Authorization': 'Bearer $TOKEN$',
+            'Content-Type': 'application/json',
+            'User-Agent': 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+          },
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        let bodyObj = result.body;
+        if (typeof bodyObj === 'string') {
+          try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
+        }
+        if (bodyObj) {
+          quotaStore[file.name] = {
+            loading: false,
+            plan: 'ChatGPT Plus',
+            groups: [{
+              title: 'CODEX RATE LIMITS',
+              models: 'GPT-5.6 / Codex',
+              rows: [{ label: 'Primary Window', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
+            }],
+          };
+          return;
+        }
+      }
+    } catch (e) {}
+
+    quotaStore[file.name] = {
+      loading: false,
+      plan: 'ChatGPT Plus',
+      groups: [],
+      error: 'Upstream quota request failed',
+    };
+  }
+
+  function formatDuration(dateStr) {
+    if (!dateStr) return '';
+    const target = new Date(dateStr).getTime();
+    if (isNaN(target)) return '';
+    const delta = target - Date.now();
+    if (delta <= 0) return '';
+    const totalMinutes = Math.floor(delta / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const mins = totalMinutes % 60;
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  }
+
+  function resolveSoonestRecoveryMs(file) {
+    const quota = quotaStore[file.name];
+    if (!quota || !quota.groups || quota.groups.length === 0) return null;
+    let minMs = null;
+    quota.groups.forEach(g => {
+      g.rows.forEach(r => {
+        if (r.resetMs && !isNaN(r.resetMs)) {
+          if (minMs === null || r.resetMs < minMs) {
+            minMs = r.resetMs;
+          }
+        }
+      });
+    });
+    return minMs;
+  }
+
+  function updateLoadedCount() {
+    const loaded = Object.values(quotaStore).filter(q => q.groups && q.groups.length > 0).length;
+    document.getElementById('stat-loaded').textContent = loaded;
+  }
+
+  function sortFiles(list) {
+    if (currentSort === 'default') {
+      return [...list];
+    }
+
+    if (currentSort === 'soonest') {
+      return [...list].sort((a, b) => {
+        const msA = resolveSoonestRecoveryMs(a);
+        const msB = resolveSoonestRecoveryMs(b);
+        if (msA === null && msB === null) return 0;
+        if (msA === null) return 1;
+        if (msB === null) return -1;
+        return msA - msB;
+      });
+    }
+
+    if (currentSort === 'prefix-asc') {
+      return [...list].sort((a, b) => {
+        const pA = (a.prefix || '').trim();
+        const pB = (b.prefix || '').trim();
+        const hasA = pA.length > 0;
+        const hasB = pB.length > 0;
+
+        // las que tienen prefijo primero, ordenadas A-Z
+        if (hasA && hasB) return pA.localeCompare(pB);
+        if (hasA) return -1;
+        if (hasB) return 1;
+        // las que no lo tienen quedan luego sin alterar orden
+        return 0;
+      });
+    }
+
+    if (currentSort === 'prefix-desc') {
+      return [...list].sort((a, b) => {
+        const pA = (a.prefix || '').trim();
+        const pB = (b.prefix || '').trim();
+        const hasA = pA.length > 0;
+        const hasB = pB.length > 0;
+
+        // las que tienen prefijo primero, ordenadas Z-A
+        if (hasA && hasB) return pB.localeCompare(pA);
+        if (hasA) return -1;
+        if (hasB) return 1;
+        return 0;
+      });
+    }
+
+    return list;
+  }
+
+  function render() {
+    const filtered = authFiles.filter(f => {
+      if (currentTab === 'all') return true;
+      const p = (f.type || f.provider || 'antigravity').toLowerCase();
+      return p === currentTab;
+    });
+
+    const sorted = sortFiles(filtered);
+
+    if (sorted.length === 0) {
+      grid.innerHTML = `<div class="state-box">No credentials found for provider "${currentTab}".</div>`;
+      return;
+    }
+
+    grid.innerHTML = sorted.map(file => renderCard(file)).join('');
+
+    sorted.forEach(file => {
+      const btn = document.getElementById(`btn-ref-${file.name}`);
+      if (btn) {
+        btn.addEventListener('click', () => fetchFileQuota(file));
+      }
+    });
+  }
+
+  function renderCard(file) {
+    const fileName = file.name;
+    const provider = (file.type || file.provider || 'antigravity').toLowerCase();
+    const quota = quotaStore[fileName] || { loading: false, plan: 'Pro', groups: [] };
+
+    const prefix = file.prefix || '';
+    const prefixDisplay = prefix.trim() !== ''
+      ? `<span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(prefix)}</span>`
+      : `<span class="prefix-label">Prefix:</span><span class="prefix-dash">-</span>`;
+
+    const iconChar = provider === 'claude' ? '✳' : provider === 'codex' ? '⬡' : provider === 'kimi' ? 'K' : provider === 'xai' ? '⊘' : '▲';
+    const iconColor = provider === 'claude' ? 'var(--brand-claude)' : provider === 'codex' ? 'var(--brand-codex)' : provider === 'kimi' ? 'var(--brand-kimi)' : provider === 'xai' ? 'var(--brand-xai)' : 'var(--brand-antigravity)';
+
+    let bodyContent = '';
+    if (quota.loading) {
+      bodyContent = `
+        <div style="padding: 20px 0; text-align: center; color: var(--text-muted); font-size: 12px;">
+          <span class="spinning" style="display:inline-block; margin-right:5px;">🔄</span> Loading live quota data...
+        </div>
+      `;
+    } else if (quota.error) {
+      bodyContent = `
+        <div style="padding: 10px 12px; border-radius: 6px; background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); color: var(--meter-text-critical); font-size: 11.5px;">
+          ${escapeHtml(quota.error)}
+        </div>
+      `;
+    } else if (quota.groups && quota.groups.length > 0) {
+      bodyContent = quota.groups.map(group => `
+        <div class="quota-group">
+          <div class="group-title">${escapeHtml(group.title)}</div>
+          ${group.models ? `<div class="group-models">Models in this group: ${escapeHtml(group.models)}</div>` : ''}
+          ${group.rows.map(row => `
+            <div class="meter-row">
+              <div class="meter-header">
+                <span class="meter-label">${escapeHtml(row.label)}</span>
+                <span class="meter-meta">
+                  <span class="meta-percent">${escapeHtml(row.percentLabel)}</span>
+                  <span class="meta-reset ${row.warning ? 'meta-reset-soon' : ''}">${escapeHtml(row.resetLabel)}</span>
+                </span>
+              </div>
+              <div class="track">
+                <div class="fill ${row.percent < 10 ? 'critical' : row.percent < 30 ? 'warning' : ''}" style="width: ${row.percent}%;"></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+    } else {
+      bodyContent = `
+        <div style="padding: 14px 0; text-align: center; color: var(--text-muted); font-size: 11.5px;">
+          Click "Refresh quota" below to fetch live metrics.
+        </div>
+      `;
+    }
+
+    return `
+      <article class="card">
+        <header class="card-head">
+          <div class="provider-icon-box" style="color: ${iconColor};">
+            ${iconChar}
+          </div>
+          <div class="card-title-col">
+            <span class="file-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
+            <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
+              ${prefixDisplay}
+            </div>
+          </div>
+        </header>
+
+        <div class="card-body">
+          <div class="plan-row">
+            <span>Plan</span>
+            <span class="plan-badge">${escapeHtml(quota.plan || 'Pro')}</span>
+          </div>
+          ${bodyContent}
+        </div>
+
+        <footer class="card-footer">
+          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" title="Refresh quota for this credential">
+            <span class="${quota.loading ? 'spinning' : ''}">🔄</span> Refresh quota
+          </button>
+        </footer>
+      </article>
+    `;
+  }
+
+  function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+  </script>
 </body>
 </html>

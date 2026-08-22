@@ -13,7 +13,7 @@ import (
 func TestResourceHandler_PathTraversalAnd404(t *testing.T) {
 	handler := handlers.NewResourceHandler()
 
-	traversalCases := []struct {
+	tests := []struct {
 		name string
 		path string
 	}{
@@ -27,23 +27,23 @@ func TestResourceHandler_PathTraversalAnd404(t *testing.T) {
 		},
 		{
 			name: "encoded slash traversal",
-			path: "/v0/resource/plugins/control-account/quota/..%2f..%2fmodels%2fquota.go",
+			path: "/v0/resource/plugins/control-account/quota/..%2f..%2fsecret.txt",
 		},
 		{
 			name: "unmapped asset name",
-			path: "/v0/resource/plugins/control-account/quota/nonexistent.html",
+			path: "/v0/resource/plugins/control-account/quota/unmapped_image.png",
 		},
 		{
 			name: "arbitrary subpath not in assets",
-			path: "/v0/resource/plugins/control-account/quota/admin/secret",
+			path: "/v0/resource/plugins/control-account/quota/admin/config.json",
 		},
 		{
 			name: "wrong base prefix path",
-			path: "/v0/other/unrelated/path",
+			path: "/v0/resource/plugins/other-plugin/quota",
 		},
 	}
 
-	for _, tc := range traversalCases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			rw := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 			name:                "root quota dashboard with trailing slash",
 			path:                "/v0/resource/plugins/control-account/quota/",
 			expectedContentType: "text/html; charset=utf-8",
-			bodyContains:        "provider-tabs",
+			bodyContains:        "Quota Management",
 		},
 		{
 			name:                "explicit index.html",
@@ -134,8 +134,9 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 				t.Errorf("expected Cache-Control 'public, max-age=3600', got %q", cc)
 			}
 
-			if !strings.Contains(rw.Body.String(), tt.bodyContains) {
-				t.Errorf("expected response body to contain %q, got %s", tt.bodyContains, rw.Body.String())
+			body := rw.Body.String()
+			if !strings.Contains(body, tt.bodyContains) {
+				t.Errorf("expected body to contain %q", tt.bodyContains)
 			}
 		})
 	}
@@ -143,8 +144,8 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 
 func TestResourceHandler_DisallowedMethods(t *testing.T) {
 	handler := handlers.NewResourceHandler()
-
 	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}
+
 	for _, m := range methods {
 		t.Run(m, func(t *testing.T) {
 			req := httptest.NewRequest(m, "/v0/resource/plugins/control-account/quota", nil)
