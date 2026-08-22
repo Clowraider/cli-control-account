@@ -88,12 +88,21 @@ jobs:
           sha256sum * > checksums.txt
           cat checksums.txt
 
-      - name: Upload assets to GitHub Release
+      - name: Ensure GitHub Release exists and Upload assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="${GITHUB_REF_NAME}"
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            TAG_NAME="v0.1"
+            TAG_NAME="v0.2.0"
           fi
+          
+          # Check if release exists, create if not
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME not found, creating release..."
+            gh release create "$TAG_NAME" \
+              --title "Release $TAG_NAME" \
+              --generate-notes
+          fi
+          
           gh release upload "$TAG_NAME" release-assets/* --clobber
