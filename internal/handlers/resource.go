@@ -13,6 +13,15 @@ import (
 // DefaultQuotaBasePath defines the standard management resource path for Quota UI.
 const DefaultQuotaBasePath = "/v0/resource/plugins/control-account/quota"
 
+// DefaultSecurityHeaders returns standard HTTP security and cache headers.
+func DefaultSecurityHeaders(contentType string) map[string][]string {
+	return map[string][]string{
+		"Content-Type":           {contentType},
+		"Cache-Control":          {"public, max-age=3600"},
+		"X-Content-Type-Options": {"nosniff"},
+	}
+}
+
 // ResourceHandler serves embedded web assets with path sanitization and security headers.
 type ResourceHandler struct {
 	basePath string
@@ -93,9 +102,11 @@ func (h *ResourceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rw.Header().Set("Content-Type", mimeType)
-	rw.Header().Set("Cache-Control", "public, max-age=3600")
-	rw.Header().Set("X-Content-Type-Options", "nosniff")
+	for k, v := range DefaultSecurityHeaders(mimeType) {
+		for _, val := range v {
+			rw.Header().Add(k, val)
+		}
+	}
 	rw.WriteHeader(http.StatusOK)
 
 	if req.Method != http.MethodHead {
