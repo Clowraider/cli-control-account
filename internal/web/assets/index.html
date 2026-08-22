@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quota Management - Control Account</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-theme">
+  <div class="app-container">
+    <header class="header">
+      <div class="header-content">
+        <div class="header-brand">
+          <div class="logo-icon">📊</div>
+          <div>
+            <h1>Quota Management</h1>
+            <p class="subtitle">Monitor real-time rate limits, reset windows, and token usage</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="refresh-btn" class="btn btn-secondary" title="Refresh Quota Metrics">
+            <span class="refresh-icon">🔄</span> Refresh
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Provider Tabs -->
+      <nav class="provider-tabs" role="tablist" aria-label="Filter by Provider">
+        <button class="tab-btn active" data-provider="all" role="tab" aria-selected="true">All</button>
+        <button class="tab-btn" data-provider="antigravity" role="tab" aria-selected="false">Antigravity</button>
+        <button class="tab-btn" data-provider="claude" role="tab" aria-selected="false">Claude</button>
+        <button class="tab-btn" data-provider="codex" role="tab" aria-selected="false">Codex</button>
+        <button class="tab-btn" data-provider="kimi" role="tab" aria-selected="false">Kimi</button>
+        <button class="tab-btn" data-provider="xai" role="tab" aria-selected="false">xAI</button>
+      </nav>
+
+      <!-- Search and Summary Bar -->
+      <div class="filter-bar">
+        <input type="text" id="search-input" class="search-input" placeholder="Search account ID, prefix, or provider..." aria-label="Search accounts">
+        <div class="summary-stats">
+          <span class="stat-badge">Accounts: <strong id="total-accounts-count">0</strong></span>
+          <span class="stat-badge">Active Windows: <strong id="active-windows-count">0</strong></span>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="state-container hidden">
+        <div class="spinner"></div>
+        <p>Loading quota information...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="state-container hidden">
+        <div class="empty-icon">📂</div>
+        <h3>No Accounts Found</h3>
+        <p id="empty-message">No account quota records match the selected provider filter.</p>
+      </div>
+
+      <!-- Quota Cards Grid -->
+      <section id="cards-grid" class="cards-grid" aria-label="Quota Cards">
+        <!-- Cards rendered dynamically via app.js -->
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>CLIProxyAPI Control Account Plugin &bull; Quota Monitoring Engine v1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

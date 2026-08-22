@@ -1,0 +1,17 @@
+# Compiled dynamic libraries and Cgo headers
+*.so
+*.dylib
+*.dll
+*.h
+
+# OS and IDE files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Test binaries and coverage
+*.test
+coverage.out
+coverage.html
