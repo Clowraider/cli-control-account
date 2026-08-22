@@ -15,8 +15,6 @@ No Go toolchain or C compiler is required. Download the pre-built `.so` file for
 |---|---|
 | **Linux amd64** (Ubuntu / Debian / Docker Standard) | `control-account-linux-amd64.so` |
 | **Linux arm64** (Apple Silicon Docker / Raspberry / AWS Graviton) | `control-account-linux-arm64.so` |
-| **macOS Apple Silicon** (M1/M2/M3/M4 local) | `control-account-darwin-arm64.dylib` |
-| **macOS Intel** (x86_64 local) | `control-account-darwin-amd64.dylib` |
 
 ### 1. Place the binary in your plugins folder
 ```bash
@@ -89,7 +87,7 @@ go test -v -race ./...
 
 ```text
 cli-control-account/
-├── .github/workflows/release.yml     # Automated multi-arch CI/CD builds
+├── .github/workflows/release.yml     # Automated Linux amd64 / arm64 CI/CD builds
 ├── Makefile                          # Build & test automation
 ├── go.mod                            # Go module definition
 ├── main.go                           # C-ABI entry point (cliproxy_plugin_init)

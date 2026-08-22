@@ -23,7 +23,6 @@ jobs:
             goarch: amd64
             ext: so
             name: control-account-linux-amd64.so
-            use_musl: false
           # Linux arm64 (glibc - Raspberry Pi / AWS Graviton / Apple Silicon Docker)
           - os: linux
             arch: arm64
@@ -31,7 +30,6 @@ jobs:
             goarch: arm64
             ext: so
             name: control-account-linux-arm64.so
-            use_musl: false
             cross_cc: aarch64-linux-gnu-gcc
             pkg: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
 
@@ -43,7 +41,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-          cache: true
+          cache: false
 
       - name: Install cross-compilation packages
         if: matrix.pkg != ''
@@ -61,46 +59,6 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ matrix.cross_cc || 'gcc' }}
         run: |
-          go build -buildmode=c-shared -ldflags="-s -w" -o dist/${{ matrix.name }} main.go
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: dist/${{ matrix.name }}
-
-  build-macos:
-    name: Build macOS Dynamic Libraries
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        include:
-          # macOS arm64 (Apple Silicon)
-          - goarch: arm64
-            name: control-account-darwin-arm64.dylib
-          # macOS amd64 (Intel)
-          - goarch: amd64
-            name: control-account-darwin-amd64.dylib
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-          cache: true
-
-      - name: Run Tests
-        run: go test -v ./...
-
-      - name: Compile macOS dynamic library (${{ matrix.name }})
-        env:
-          CGO_ENABLED: '1'
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
-        run: |
           mkdir -p dist
           go build -buildmode=c-shared -ldflags="-s -w" -o dist/${{ matrix.name }} main.go
 
@@ -112,7 +70,7 @@ jobs:
 
   publish-release:
     name: Publish Release Assets
-    needs: [build-binaries, build-macos]
+    needs: [build-binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
