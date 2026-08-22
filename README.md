@@ -7,22 +7,89 @@ A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github
 
 ---
 
-## Features
+## 📦 Option 1: Quick Install with Precompiled Binaries (No compilation needed)
 
-- **Standard C-ABI Dynamic Plugin**: Exports `cliproxy_plugin_init` and integrates seamlessly with CLIProxyAPI host lifecycle hooks (`plugin.register`, `plugin.reconfigure`, `management.register`, `management.handle`).
-- **Embedded Web SPA**: Zero-dependency static asset delivery bundled via Go `//go:embed` at `/v0/resource/plugins/control-account/quota`.
-- **Dark Theme Dashboard**: Modern dark mode UI matching the CLI Proxy API Management Center aesthetics.
-- **Provider Filtering**: Filter accounts across supported providers: `All`, `Antigravity`, `Claude`, `Codex`, `Kimi`, and `xAI`.
-- **Real-Time Timers & Progress Gauges**: Live countdown timers for quota reset windows and visual consumption meters.
-- **Account Prefix Visibility**: Renders the account prefix immediately beneath the account ID with a fixed-height placeholder (`-`) ensuring uniform card heights and flawless grid alignment.
-- **Security Hardened**: Strict path traversal defense, `X-Content-Type-Options: nosniff`, and structured JSON 404 responses.
+No Go toolchain or C compiler is required. Download the pre-built `.so` file for your platform directly from [GitHub Releases](https://github.com/Clowraider/cli-control-account/releases):
+
+| Platform / Architecture | Download Binary |
+|---|---|
+| **Linux amd64** (Ubuntu / Debian / Docker Standard) | `control-account-linux-amd64.so` |
+| **Linux arm64** (Apple Silicon Docker / Raspberry / AWS Graviton) | `control-account-linux-arm64.so` |
+| **macOS Apple Silicon** (M1/M2/M3/M4 local) | `control-account-darwin-arm64.dylib` |
+| **macOS Intel** (x86_64 local) | `control-account-darwin-amd64.dylib` |
+
+### 1. Place the binary in your plugins folder
+```bash
+mkdir -p plugins
+# Example for Linux amd64 / Docker on Ubuntu:
+cp /path/to/control-account-linux-amd64.so plugins/control-account.so
+```
+
+### 2. Configure CLIProxyAPI `config.yaml`
+```yaml
+plugins:
+  - name: control-account
+    path: plugins/control-account.so
+```
+
+### 3. Docker & Docker Compose Setup
+Mount the `./plugins` folder into your container:
+
+```yaml
+services:
+  cliproxy:
+    image: router-for-all/cli-proxy-api:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./plugins:/app/plugins
+```
+
+Open the Quota Dashboard in your browser:
+```text
+http://localhost:8000/v0/resource/plugins/control-account/quota
+```
 
 ---
 
-## Directory Structure
+## 🛠️ Option 2: Local Compilation & Testing for Developers
+
+If you want to modify the plugin and test it locally on your Ubuntu machine with Docker before pushing new versions:
+
+### Method A: Compile Directly on Ubuntu Host
+If you have Go 1.22+ installed on your Ubuntu host:
+```bash
+# 1. Compile the dynamic library
+make build
+# Or manually:
+go build -buildmode=c-shared -o control-account.so main.go
+
+# 2. Copy the resulting .so directly to your Docker plugins directory
+cp control-account.so /ruta/a/tu/docker/plugins/control-account.so
+```
+
+### Method B: Compile inside Docker (Zero host dependencies)
+If you prefer not to install Go or GCC on your host, compile inside an ephemeral container that exactly matches Linux Docker ABI:
+```bash
+docker run --rm -v "$(pwd)":/src -w /src golang:1.22 \
+  go build -buildmode=c-shared -o control-account.so main.go
+```
+
+### Run Test Suite Locally
+```bash
+make test
+# Or with race detector:
+go test -v -race ./...
+```
+
+---
+
+## 📁 Repository Structure
 
 ```text
 cli-control-account/
+├── .github/workflows/release.yml     # Automated multi-arch CI/CD builds
 ├── Makefile                          # Build & test automation
 ├── go.mod                            # Go module definition
 ├── main.go                           # C-ABI entry point (cliproxy_plugin_init)
@@ -46,53 +113,6 @@ cli-control-account/
 │           └── styles.css
 └── README.md
 ```
-
----
-
-## Building & Testing
-
-### Prerequisites
-
-- Go 1.22+ with Cgo enabled (`CGO_ENABLED=1`)
-- GCC / Clang C compiler
-
-### Build Shared Library
-
-```bash
-make build
-# Or directly:
-go build -buildmode=c-shared -o control-account.so main.go
-```
-
-This generates `control-account.so` (and `control-account.h`).
-
-### Run Test Suite
-
-```bash
-make test
-# Or with race detector:
-go test -v -race ./...
-```
-
----
-
-## Installation in CLIProxyAPI
-
-1. Compile the plugin for your target OS / architecture:
-   ```bash
-   make build
-   ```
-2. Copy `control-account.so` (or `control-account.dylib` on macOS) to your CLIProxyAPI `plugins/` directory.
-3. Configure the plugin in CLIProxyAPI `config.yaml`:
-   ```yaml
-   plugins:
-     - name: control-account
-       path: plugins/control-account.so
-   ```
-4. Start / restart CLIProxyAPI and access the dashboard at:
-   ```text
-   http://localhost:8000/v0/resource/plugins/control-account/quota
-   ```
 
 ---
 

@@ -1,0 +1,141 @@
+name: Release & Precompiled Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build Precompiled Dynamic Libraries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux amd64 (glibc - standard Debian/Ubuntu/Docker)
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+            ext: so
+            name: control-account-linux-amd64.so
+            use_musl: false
+          # Linux arm64 (glibc - Raspberry Pi / AWS Graviton / Apple Silicon Docker)
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+            ext: so
+            name: control-account-linux-arm64.so
+            use_musl: false
+            cross_cc: aarch64-linux-gnu-gcc
+            pkg: gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install cross-compilation packages
+        if: matrix.pkg != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.pkg }}
+
+      - name: Run Unit & Integration Tests
+        run: go test -v -race ./...
+
+      - name: Compile dynamic shared library (${{ matrix.name }})
+        env:
+          CGO_ENABLED: '1'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cross_cc || 'gcc' }}
+        run: |
+          go build -buildmode=c-shared -ldflags="-s -w" -o dist/${{ matrix.name }} main.go
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+
+  build-macos:
+    name: Build macOS Dynamic Libraries
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          # macOS arm64 (Apple Silicon)
+          - goarch: arm64
+            name: control-account-darwin-arm64.dylib
+          # macOS amd64 (Intel)
+          - goarch: amd64
+            name: control-account-darwin-amd64.dylib
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Run Tests
+        run: go test -v ./...
+
+      - name: Compile macOS dynamic library (${{ matrix.name }})
+        env:
+          CGO_ENABLED: '1'
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          go build -buildmode=c-shared -ldflags="-s -w" -o dist/${{ matrix.name }} main.go
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+
+  publish-release:
+    name: Publish Release Assets
+    needs: [build-binaries, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate Checksums (SHA-256)
+        working-directory: release-assets
+        run: |
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload assets to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG_NAME="v0.1"
+          fi
+          gh release upload "$TAG_NAME" release-assets/* --clobber
