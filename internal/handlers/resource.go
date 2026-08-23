@@ -17,7 +17,7 @@ const DefaultQuotaBasePath = "/v0/resource/plugins/control-account/quota"
 func DefaultSecurityHeaders(contentType string) map[string][]string {
 	return map[string][]string{
 		"Content-Type":           {contentType},
-		"Cache-Control":          {"public, max-age=3600"},
+		"Cache-Control":          {"no-cache, max-age=0, must-revalidate"},
 		"X-Content-Type-Options": {"nosniff"},
 	}
 }

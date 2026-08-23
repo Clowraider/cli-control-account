@@ -1023,6 +1023,74 @@ body {
   padding: 48px 16px;
   color: var(--text-muted);
 }
+
+/* Auth / Storage Warning State */
+.auth-warning-box {
+  grid-column: 1 / -1;
+  max-width: 680px;
+  margin: 32px auto;
+  background: var(--bg-card);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.auth-warning-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.auth-warning-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.auth-warning-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--meter-text-warning);
+}
+
+.auth-warning-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.auth-warning-desc strong {
+  color: var(--text-primary);
+}
+
+.auth-warning-steps {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.auth-warning-steps strong {
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.auth-warning-steps ol {
+  margin-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-warning-steps li strong {
+  display: inline;
+  color: var(--meter-text-green);
+}
   </style>
 </head>
 <body>
@@ -1302,9 +1370,42 @@ body {
   }
 
   async function loadAuthFiles() {
+    const key = getManagementKey();
+    if (!key) {
+      console.warn('Management key not found in storage. "Remember password" in CPAMC may be unchecked.');
+      grid.innerHTML = `
+        <div class="auth-warning-box">
+          <div class="auth-warning-head">
+            <span class="auth-warning-icon">🔐</span>
+            <div>
+              <h3 class="auth-warning-title">Authentication Required / Sesión no autenticada</h3>
+            </div>
+          </div>
+          <p class="auth-warning-desc">
+            El plugin no pudo obtener la clave de administración (<strong>managementKey</strong>) desde el almacenamiento del navegador.<br>
+            En <strong>CPAMC</strong>, la clave solo se almacena de forma accesible para los plugins dentro del iframe cuando inicias sesión marcando la casilla <strong>"Remember password"</strong> (Recordar contraseña).
+          </p>
+          <div class="auth-warning-steps">
+            <strong>¿Cómo solucionarlo?</strong>
+            <ol>
+              <li>Cierra sesión o recarga la consola principal de <strong>CPAMC</strong>.</li>
+              <li>Al iniciar sesión, asegúrate de <strong>marcar la casilla "Remember password"</strong>.</li>
+              <li>Vuelve a abrir este panel de <strong>Control Account</strong>.</li>
+            </ol>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     try {
       const res = await apiFetch('/v0/management/auth-files');
-      if (!res.ok) throw new Error('Status ' + res.status);
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error('401_UNAUTHORIZED');
+        }
+        throw new Error('Status ' + res.status);
+      }
       const json = await res.json();
       authFiles = json.files || [];
 
@@ -1330,7 +1431,24 @@ body {
       refreshAll();
     } catch (err) {
       console.error('Error in loadAuthFiles:', err);
-      grid.innerHTML = `<div class="state-box">Failed to load credentials from Management API.</div>`;
+      if (err.message === '401_UNAUTHORIZED') {
+        grid.innerHTML = `
+          <div class="auth-warning-box">
+            <div class="auth-warning-head">
+              <span class="auth-warning-icon">⛔</span>
+              <div>
+                <h3 class="auth-warning-title">401 Unauthorized / Clave no válida</h3>
+              </div>
+            </div>
+            <p class="auth-warning-desc">
+              La clave de administración proporcionada fue rechazada por el servidor con error 401.<br>
+              Por favor, vuelve a iniciar sesión en CPAMC con la clave correcta y la casilla <strong>"Remember password"</strong> marcada.
+            </p>
+          </div>
+        `;
+      } else {
+        grid.innerHTML = `<div class="state-box">Failed to load credentials from Management API: ${escapeHtml(err.message || String(err))}</div>`;
+      }
     }
   }
 
@@ -1607,21 +1725,133 @@ body {
     };
   }
 
+  function formatResetInfo(resetAt, resetAfterSeconds) {
+    let resetMs = null;
+    if (resetAt) {
+      if (typeof resetAt === 'number') {
+        resetMs = resetAt < 1e11 ? resetAt * 1000 : resetAt;
+      } else if (typeof resetAt === 'string') {
+        const parsed = Date.parse(resetAt);
+        if (!isNaN(parsed)) resetMs = parsed;
+      }
+    } else if (typeof resetAfterSeconds === 'number' && resetAfterSeconds > 0) {
+      resetMs = Date.now() + resetAfterSeconds * 1000;
+    }
+
+    if (!resetMs) return { label: 'Quota available', ms: null };
+
+    const delta = resetMs - Date.now();
+    if (delta <= 0) return { label: 'Quota available', ms: resetMs };
+
+    const totalMinutes = Math.floor(delta / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const mins = totalMinutes % 60;
+    let formatted = `${mins}m`;
+    if (days > 0) formatted = `${days}d ${hours}h`;
+    else if (hours > 0) formatted = `${hours}h ${mins}m`;
+
+    return { label: `Refreshes in ${formatted}`, ms: resetMs };
+  }
+
+  function buildCodexQuotaRows(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    const rows = [];
+    const rateLimit = payload.rate_limit || payload.rateLimit;
+    const codeReviewLimit = payload.code_review_rate_limit || payload.codeReviewRateLimit;
+    const additionalLimits = payload.additional_rate_limits || payload.additionalRateLimits || [];
+
+    function processWindow(windowObj, defaultLabel, limitReached, allowed) {
+      if (!windowObj && limitReached === undefined && allowed === undefined) return null;
+      let usedPercent = null;
+      if (windowObj) {
+        usedPercent = windowObj.used_percent !== undefined ? windowObj.used_percent : windowObj.usedPercent;
+        if (typeof usedPercent === 'string') usedPercent = parseFloat(usedPercent);
+      }
+
+      let remaining = 100;
+      if (typeof usedPercent === 'number' && !isNaN(usedPercent)) {
+        remaining = Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
+      } else if (limitReached === true || allowed === false) {
+        remaining = 0;
+      }
+
+      const resetAt = windowObj?.reset_at ?? windowObj?.resetAt;
+      const resetAfter = windowObj?.reset_after_seconds ?? windowObj?.resetAfterSeconds;
+      const resetInfo = formatResetInfo(resetAt, resetAfter);
+
+      const percentLabel = remaining === 100 ? 'Quota available' : `${remaining}% remaining`;
+      const resetLabel = remaining === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+
+      return {
+        label: defaultLabel,
+        percent: remaining,
+        percentLabel: percentLabel,
+        resetLabel: resetLabel,
+        resetMs: resetInfo.ms,
+        warning: remaining < 20 || limitReached === true || allowed === false,
+      };
+    }
+
+    if (rateLimit) {
+      const limitReached = rateLimit.limit_reached ?? rateLimit.limitReached;
+      const allowed = rateLimit.allowed;
+      const pWin = rateLimit.primary_window || rateLimit.primaryWindow;
+      const sWin = rateLimit.secondary_window || rateLimit.secondaryWindow;
+
+      const pRow = processWindow(pWin, 'Five Hour Limit', limitReached, allowed);
+      if (pRow) rows.push(pRow);
+
+      const sRow = processWindow(sWin, 'Weekly Limit', limitReached, allowed);
+      if (sRow) rows.push(sRow);
+    }
+
+    if (codeReviewLimit) {
+      const crReached = codeReviewLimit.limit_reached ?? codeReviewLimit.limitReached;
+      const crAllowed = codeReviewLimit.allowed;
+      const crWin = codeReviewLimit.primary_window || codeReviewLimit.primaryWindow;
+      const crRow = processWindow(crWin, 'Code Review Limit', crReached, crAllowed);
+      if (crRow) rows.push(crRow);
+    }
+
+    if (Array.isArray(additionalLimits)) {
+      additionalLimits.forEach(item => {
+        if (!item) return;
+        const name = item.name || 'Additional Limit';
+        const aReached = item.limit_reached ?? item.limitReached;
+        const aAllowed = item.allowed;
+        const aWin = item.primary_window || item.primaryWindow;
+        const aRow = processWindow(aWin, `${name} Limit`, aReached, aAllowed);
+        if (aRow) rows.push(aRow);
+      });
+    }
+
+    rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
+    return rows;
+  }
+
   async function fetchCodexQuota(file, authIndex) {
     try {
+      const headers = {
+        'Authorization': 'Bearer $TOKEN$',
+        'Content-Type': 'application/json',
+        'User-Agent': 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+      };
+      const accountId = file.project_id || file._raw?.account_id || file._raw?.chatgpt_account_id;
+      if (accountId) {
+        headers['Chatgpt-Account-Id'] = accountId;
+      }
+
       const res = await apiFetch('/v0/management/api-call', {
         method: 'POST',
         body: JSON.stringify({
           authIndex: authIndex,
           method: 'GET',
           url: 'https://chatgpt.com/backend-api/wham/usage',
-          header: {
-            'Authorization': 'Bearer $TOKEN$',
-            'Content-Type': 'application/json',
-            'User-Agent': 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
-          },
+          header: headers,
         }),
       });
+
       if (res.ok) {
         const result = await res.json();
         let bodyObj = result.body;
@@ -1629,13 +1859,17 @@ body {
           try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
         }
         if (bodyObj) {
+          const rawPlan = bodyObj.plan_type || bodyObj.planType || 'plus';
+          const planDisplay = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
+          const rows = buildCodexQuotaRows(bodyObj);
+
           quotaStore[file.name] = {
             loading: false,
-            plan: 'ChatGPT Plus',
+            plan: planDisplay,
             groups: [{
               title: 'CODEX RATE LIMITS',
               models: 'GPT-5.6 / Codex',
-              rows: [{ label: 'Primary Window', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
+              rows: rows.length > 0 ? rows : [{ label: 'Primary Window', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
             }],
           };
           return;
@@ -1645,7 +1879,7 @@ body {
 
     quotaStore[file.name] = {
       loading: false,
-      plan: 'ChatGPT Plus',
+      plan: 'Plus',
       groups: [],
       error: 'Upstream quota request failed',
     };

@@ -972,6 +972,74 @@ h1 {
   cursor: not-allowed;
 }
 
+/* Auth / Storage Warning State */
+.auth-warning-box {
+  grid-column: 1 / -1;
+  max-width: 680px;
+  margin: 32px auto;
+  background: var(--bg-card);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.auth-warning-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.auth-warning-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.auth-warning-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--meter-text-warning);
+}
+
+.auth-warning-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.auth-warning-desc strong {
+  color: var(--text-primary);
+}
+
+.auth-warning-steps {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.auth-warning-steps strong {
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.auth-warning-steps ol {
+  margin-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-warning-steps li strong {
+  display: inline;
+  color: var(--meter-text-green);
+}
+
 .toast {
   background: #161b22;
   border: 1px solid #30363d;

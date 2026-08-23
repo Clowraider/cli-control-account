@@ -130,8 +130,8 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 			}
 
 			cc := rw.Header().Get("Cache-Control")
-			if cc != "public, max-age=3600" {
-				t.Errorf("expected Cache-Control 'public, max-age=3600', got %q", cc)
+			if cc != "no-cache, max-age=0, must-revalidate" {
+				t.Errorf("expected Cache-Control 'no-cache, max-age=0, must-revalidate', got %q", cc)
 			}
 
 			body := rw.Body.String()

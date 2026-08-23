@@ -100,3 +100,21 @@ func TestResolveMIMEType(t *testing.T) {
 		})
 	}
 }
+
+func TestEmbeddedDashboard_ParsesCodexUsageInsteadOfHardcodingFullQuota(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	if !strings.Contains(html, "function buildCodexQuotaRows(payload)") {
+		t.Fatal("expected a Codex usage normalizer function buildCodexQuotaRows(payload)")
+	}
+	if !strings.Contains(html, "100 - usedPercent") {
+		t.Fatal("expected remaining quota to derive from 100 - usedPercent")
+	}
+	if !strings.Contains(html, "auth-warning-box") {
+		t.Fatal("expected auth-warning-box for missing management key guidance")
+	}
+}
