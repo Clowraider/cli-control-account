@@ -916,10 +916,77 @@ body {
 /* Card Action Footer */
 .card-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 2px;
   padding-top: 6px;
   border-top: 1px solid rgba(48, 54, 61, 0.4);
+  gap: 8px;
+}
+
+/* CPAMC Exact Toggle Switch */
+.toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.toggle-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  margin: 0;
+}
+
+.toggle-track {
+  width: 32px;
+  height: 18px;
+  background: var(--border-color);
+  border-radius: 9999px;
+  position: relative;
+  transition: background 0.2s ease;
+  display: block;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--meter-green);
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(14px);
+}
+
+.toggle-switch.disabled,
+.toggle-switch input:disabled + .toggle-track {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-card-refresh {
@@ -1058,10 +1125,11 @@ body {
 
       <div class="sort-wrap">
         <select id="sort-select" class="sort-select" aria-label="Sort options">
-          <option value="default">Default</option>
-          <option value="soonest">Soonest recovery</option>
-          <option value="prefix-asc">Prefix (A-Z)</option>
+          <option value="prefix-asc" selected>Prefix (A-Z)</option>
           <option value="prefix-desc">Prefix (Z-A)</option>
+          <option value="soonest">Soonest recovery</option>
+          <option value="az">A-Z Name</option>
+          <option value="default">Default</option>
         </select>
       </div>
     </div>
@@ -1108,7 +1176,7 @@ body {
   'use strict';
 
   let currentTab = 'all';
-  let currentSort = 'default';
+  let currentSort = 'prefix-asc';
   let authFiles = [];
   let apiKeyUsage = {};
   let quotaStore = {};
@@ -1282,8 +1350,9 @@ body {
   }
 
   function updateTabCounts() {
-    const counts = { all: authFiles.length, claude: 0, antigravity: 0, codex: 0, xai: 0, kimi: 0 };
-    authFiles.forEach(f => {
+    const activeFiles = authFiles.filter(f => !f.disabled);
+    const counts = { all: activeFiles.length, claude: 0, antigravity: 0, codex: 0, xai: 0, kimi: 0 };
+    activeFiles.forEach(f => {
       const p = (f.type || f.provider || 'antigravity').toLowerCase();
       if (counts[p] !== undefined) counts[p]++;
     });
@@ -1297,11 +1366,22 @@ body {
     document.getElementById('count-kimi').textContent = counts.kimi;
   }
 
+  function updateLoadedCount() {
+    const activeFiles = authFiles.filter(f => !f.disabled);
+    const loaded = activeFiles.filter(f => {
+      const q = quotaStore[f.name];
+      return q && q.groups && q.groups.length > 0;
+    }).length;
+    const el = document.getElementById('stat-loaded');
+    if (el) el.textContent = loaded;
+  }
+
   function refreshAll() {
     const icon = document.getElementById('refresh-all-icon');
     if (icon) icon.classList.add('spinning');
 
-    const promises = authFiles.map(file => fetchFileQuota(file));
+    const activeFiles = authFiles.filter(f => !f.disabled);
+    const promises = activeFiles.map(file => fetchFileQuota(file));
     Promise.allSettled(promises).finally(() => {
       if (icon) icon.classList.remove('spinning');
       updateLoadedCount();
@@ -1641,9 +1721,9 @@ body {
   function collectRecentRequestGroups(providerFilter) {
     const bucketGroups = [];
 
-    // 1. From authFiles
+    // 1. From authFiles (only active / non-disabled files)
     (authFiles || []).forEach(file => {
-      if (!file) return;
+      if (!file || file.disabled) return;
       const p = (file.type || file.provider || 'antigravity').toLowerCase();
       if (providerFilter !== 'all' && p !== providerFilter) return;
 
@@ -1845,6 +1925,14 @@ body {
   }
 
   function sortFiles(list) {
+    if (currentSort === 'az') {
+      return [...list].sort((a, b) => {
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    }
+
     if (currentSort === 'default') {
       return [...list];
     }
@@ -1868,11 +1956,10 @@ body {
         const hasB = pB.length > 0;
 
         // las que tienen prefijo primero, ordenadas A-Z
-        if (hasA && hasB) return pA.localeCompare(pB);
+        if (hasA && hasB) return pA.localeCompare(pB) || a.name.localeCompare(b.name);
         if (hasA) return -1;
         if (hasB) return 1;
-        // las que no lo tienen quedan luego sin alterar orden
-        return 0;
+        return a.name.localeCompare(b.name);
       });
     }
 
@@ -1884,10 +1971,10 @@ body {
         const hasB = pB.length > 0;
 
         // las que tienen prefijo primero, ordenadas Z-A
-        if (hasA && hasB) return pB.localeCompare(pA);
+        if (hasA && hasB) return pB.localeCompare(pA) || a.name.localeCompare(b.name);
         if (hasA) return -1;
         if (hasB) return 1;
-        return 0;
+        return a.name.localeCompare(b.name);
       });
     }
 
@@ -2030,8 +2117,39 @@ body {
     }, 3000);
   }
 
+  async function toggleFileStatus(file, nextDisabled, switchInput) {
+    const fileName = file.name;
+    if (switchInput) switchInput.disabled = true;
+
+    try {
+      const res = await apiFetch('/v0/management/auth-files/status', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: fileName, disabled: nextDisabled }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Status ' + res.status);
+      }
+
+      file.disabled = nextDisabled;
+      showToast(nextDisabled ? `Credential "${fileName}" disabled and removed` : `Credential "${fileName}" enabled`, false);
+
+      updateTabCounts();
+      renderThroughputPanel();
+      render();
+    } catch (err) {
+      console.error('Failed to toggle status for:', fileName, err);
+      if (switchInput) {
+        switchInput.checked = !nextDisabled;
+        switchInput.disabled = false;
+      }
+      showToast(`Failed to update status: ${err.message || 'Unknown error'}`, true);
+    }
+  }
+
   function render() {
     const filtered = authFiles.filter(f => {
+      if (f.disabled) return false;
       if (currentTab === 'all') return true;
       const p = (f.type || f.provider || 'antigravity').toLowerCase();
       return p === currentTab;
@@ -2040,7 +2158,7 @@ body {
     const sorted = sortFiles(filtered);
 
     if (sorted.length === 0) {
-      grid.innerHTML = `<div class="state-box">No credentials found for provider "${currentTab}".</div>`;
+      grid.innerHTML = `<div class=\"state-box\">No active credentials found for provider \"${currentTab}\".</div>`;
       return;
     }
 
@@ -2050,6 +2168,14 @@ body {
       const btn = document.getElementById(`btn-ref-${file.name}`);
       if (btn) {
         btn.addEventListener('click', () => fetchFileQuota(file));
+      }
+
+      const switchInput = document.getElementById(`toggle-status-${file.name}`);
+      if (switchInput) {
+        switchInput.addEventListener('change', (e) => {
+          const isEnabled = e.target.checked;
+          toggleFileStatus(file, !isEnabled, switchInput);
+        });
       }
     });
 
@@ -2146,6 +2272,13 @@ body {
         </div>
 
         <footer class="card-footer">
+          <div class="toggle-wrap" title="Toggle credential active status">
+            <span class="toggle-label">Enabled</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-status-${escapeHtml(fileName)}" ${!file.disabled ? 'checked' : ''} aria-label="Toggle credential active status">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
           <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" title="Refresh quota for this credential">
             <span class="${quota.loading ? 'spinning' : ''}">🔄</span> Refresh quota
           </button>
