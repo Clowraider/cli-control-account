@@ -142,6 +142,28 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 	}
 }
 
+func TestResourceHandler_DashboardHasNoExternalAntigravitySubscriptionDependency(t *testing.T) {
+	handler := handlers.NewResourceHandler()
+	req := httptest.NewRequest(http.MethodGet, "/v0/resource/plugins/control-account/quota", nil)
+	rw := httptest.NewRecorder()
+
+	handler.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected dashboard HTTP 200, got %d", rw.Code)
+	}
+	body := rw.Body.String()
+	if strings.Contains(body, "AntigravitySubscription") {
+		t.Fatal("served dashboard must not depend on an AntigravitySubscription global")
+	}
+	if strings.Contains(body, "antigravity-subscription.js") {
+		t.Fatal("served dashboard must not request a second Antigravity subscription asset")
+	}
+	if !strings.Contains(body, "function fetchAntigravityTierSummary(authIndex)") {
+		t.Fatal("served dashboard must contain its Antigravity subscription behavior")
+	}
+}
+
 func TestResourceHandler_DisallowedMethods(t *testing.T) {
 	handler := handlers.NewResourceHandler()
 	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch}

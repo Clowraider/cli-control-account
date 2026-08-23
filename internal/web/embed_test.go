@@ -118,3 +118,44 @@ func TestEmbeddedDashboard_ParsesCodexUsageInsteadOfHardcodingFullQuota(t *testi
 		t.Fatal("expected auth-warning-box for missing management key guidance")
 	}
 }
+
+func TestEmbeddedDashboard_ContainsRealAntigravitySubscriptionDetection(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	if !strings.Contains(html, "function fetchAntigravityTierSummary(authIndex)") ||
+		!strings.Contains(html, "v1internal:loadCodeAssist") {
+		t.Fatal("expected dashboard to contain the Antigravity subscription transport")
+	}
+	if !strings.Contains(html, "parsed.currentTier") || !strings.Contains(html, "parsed.paidTier") ||
+		!strings.Contains(html, "parsed.current_tier") || !strings.Contains(html, "parsed.paid_tier") {
+		t.Fatal("expected dashboard to parse camelCase and snake_case subscription tiers")
+	}
+	if strings.Contains(html, "/v0/management/antigravity-subscription") {
+		t.Fatal("dashboard must not use the obsolete Antigravity subscription endpoint")
+	}
+	if strings.Contains(html, "quota.plan || 'Pro'") || strings.Contains(html, "let subPlan = 'Pro'") {
+		t.Fatal("dashboard must not invent a Pro plan when subscription evidence is absent")
+	}
+}
+
+func TestEmbeddedDashboard_HasNoRuntimeSubscriptionAssetDependency(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	if strings.Contains(html, "AntigravitySubscription") {
+		t.Fatal("dashboard must not depend on an AntigravitySubscription global")
+	}
+	if strings.Contains(html, "antigravity-subscription.js") {
+		t.Fatal("dashboard must not load a second Antigravity subscription asset")
+	}
+	if _, _, err := web.GetAsset("antigravity-subscription.js"); err == nil {
+		t.Fatal("separate Antigravity subscription asset must not remain embedded")
+	}
+}

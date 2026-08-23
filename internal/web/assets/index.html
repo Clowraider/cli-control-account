@@ -1263,6 +1263,97 @@ body {
     'User-Agent': 'antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)',
   };
 
+  const ANTIGRAVITY_SUBSCRIPTION_URL = 'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
+  const ANTIGRAVITY_PLAN_BY_TIER_ID = {
+    'free-tier': 'free',
+    'g1-pro-tier': 'pro',
+    'g1-ultra-tier': 'ultra',
+    'g1-ultra-lite-tier': 'ultra-lite',
+  };
+  const ANTIGRAVITY_LABEL_BY_PLAN = {
+    free: 'Free',
+    pro: 'Pro',
+    ultra: 'Ultra',
+    'ultra-lite': 'Ultra Lite',
+  };
+
+  function toAntigravityRecord(value) {
+    if (value === undefined || value === null || Array.isArray(value)) return null;
+    if (typeof value === 'object') return value;
+    if (typeof value !== 'string' || !value.trim()) return null;
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function normalizeAntigravityString(value) {
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return null;
+  }
+
+  function parseAntigravityTierSummary(payload) {
+    const envelope = toAntigravityRecord(payload);
+    if (!envelope) return null;
+    const parsed = toAntigravityRecord(envelope.body) || envelope;
+    const normalizeTier = value => {
+      const tier = toAntigravityRecord(value);
+      return tier ? {
+        id: normalizeAntigravityString(tier.id),
+        name: normalizeAntigravityString(tier.name),
+      } : null;
+    };
+    const currentTier = normalizeTier(parsed.currentTier !== undefined ? parsed.currentTier : parsed.current_tier);
+    const paidTier = normalizeTier(parsed.paidTier !== undefined ? parsed.paidTier : parsed.paid_tier);
+    const effectiveTier = paidTier && paidTier.id ? paidTier : currentTier;
+    if (!effectiveTier || (!effectiveTier.id && !effectiveTier.name)) return null;
+    return {
+      plan: effectiveTier.id ? (ANTIGRAVITY_PLAN_BY_TIER_ID[effectiveTier.id] || 'unknown') : 'unknown',
+      tierId: effectiveTier.id,
+      tierName: effectiveTier.name,
+    };
+  }
+
+  function getAntigravityPlanLabel(subscription) {
+    if (!subscription) return null;
+    return ANTIGRAVITY_LABEL_BY_PLAN[subscription.plan] ||
+      normalizeAntigravityString(subscription.tierName) ||
+      normalizeAntigravityString(subscription.tierId) ||
+      null;
+  }
+
+  async function fetchAntigravityTierSummary(authIndex) {
+    const response = await apiFetch('/v0/management/api-call', {
+      method: 'POST',
+      body: JSON.stringify({
+        authIndex: authIndex,
+        method: 'POST',
+        url: ANTIGRAVITY_SUBSCRIPTION_URL,
+        header: { ...ANTIGRAVITY_HEADERS },
+        data: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+      }),
+    });
+    if (!response.ok) throw new Error(`Subscription proxy request failed with status ${response.status}`);
+
+    const result = await response.json();
+    const statusCode = Number(result.statusCode !== undefined ? result.statusCode : result.status_code);
+    if (!Number.isFinite(statusCode) || statusCode < 200 || statusCode >= 300) {
+      throw new Error(`Subscription upstream request failed with status ${statusCode || 'unknown'}`);
+    }
+    return parseAntigravityTierSummary(result.body !== undefined ? result.body : result.bodyText);
+  }
+
+  async function fetchAntigravityTierSummarySafe(authIndex) {
+    try {
+      return await fetchAntigravityTierSummary(authIndex);
+    } catch (e) {
+      return null;
+    }
+  }
+
   const grid = document.getElementById('cards-grid');
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   const sortSelect = document.getElementById('sort-select');
@@ -1545,15 +1636,7 @@ body {
       } catch (e) {}
     }
 
-    // Fetch subscription summary
-    let subPlan = 'Pro';
-    try {
-      const subRes = await apiFetch(`/v0/management/antigravity-subscription?auth_index=${encodeURIComponent(authIndex)}`);
-      if (subRes.ok) {
-        const subJson = await subRes.json();
-        if (subJson.tierName || subJson.plan) subPlan = subJson.tierName || subJson.plan;
-      }
-    } catch (e) {}
+    const subscriptionPromise = fetchAntigravityTierSummarySafe(authIndex);
 
     let successPayload = null;
     let apiErrorMsg = '';
@@ -1597,14 +1680,14 @@ body {
       const groups = parseAntigravityGroups(successPayload);
       quotaStore[fileName] = {
         loading: false,
-        plan: subPlan,
+        subscription: await subscriptionPromise,
         groups: groups,
         error: null,
       };
     } else {
       quotaStore[fileName] = {
         loading: false,
-        plan: subPlan,
+        subscription: await subscriptionPromise,
         groups: [],
         error: apiErrorMsg || 'Failed to fetch live quota from upstream',
       };
@@ -2481,6 +2564,15 @@ body {
       `;
     }
 
+    const planLabel = provider === 'antigravity'
+      ? getAntigravityPlanLabel(quota.subscription)
+      : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null);
+    const planHtml = planLabel ? `
+          <div class="plan-row">
+            <span>Plan</span>
+            <span class="plan-badge">${escapeHtml(planLabel)}</span>
+          </div>` : '';
+
     return `
       <article class="card">
         <header class="card-head">
@@ -2497,10 +2589,7 @@ body {
         </header>
 
         <div class="card-body">
-          <div class="plan-row">
-            <span>Plan</span>
-            <span class="plan-badge">${escapeHtml(quota.plan || 'Pro')}</span>
-          </div>
+          ${planHtml}
           ${bodyContent}
           ${renderCardMiniActivity(file)}
         </div>
