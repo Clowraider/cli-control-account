@@ -1,9 +1,9 @@
-# CLIProxyAPI Control Account Plugin (`v0.1`)
+# CLIProxyAPI Control Account Plugin (`v0.3.0`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github.com/router-for-all/CLIProxyAPI)** that provides an embedded Quota Management Single-Page Application (SPA) dashboard with dark theme, real-time quota calculations, provider tab filtering, and explicit **Account Prefix** visibility.
+A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github.com/router-for-all/CLIProxyAPI)** that provides an embedded Quota Management Single-Page Application (SPA) dashboard with dark theme, real-time quota calculations, provider tab filtering, interactive profile/prefix modification, live throughput metrics, per-account activity sparklines, enabled/disabled account toggles, and default **Prefix (A-Z)** sorting.
 
 ---
 
@@ -19,15 +19,18 @@ No Go toolchain or C compiler is required. Download the pre-built `.so` file for
 ### 1. Place the binary in your plugins folder
 ```bash
 mkdir -p plugins
-# Example for Linux amd64 / Docker on Ubuntu:
-cp /path/to/control-account-linux-amd64.so plugins/control-account.so
+# Copy downloaded binary directly to your plugins folder
+cp /path/to/control-account-linux-amd64.so plugins/control-account-linux-amd64.so
 ```
 
 ### 2. Configure CLIProxyAPI `config.yaml`
 ```yaml
 plugins:
-  - name: control-account
-    path: plugins/control-account.so
+  enabled: true
+  dir: /app/plugins
+  configs:
+    control-account-linux-amd64:
+      enabled: true
 ```
 
 ### 3. Docker & Docker Compose Setup
@@ -46,7 +49,7 @@ services:
 
 Open the Quota Dashboard in your browser:
 ```text
-http://localhost:8000/v0/resource/plugins/control-account/quota
+http://localhost:8000/v0/resource/plugins/control-account-linux-amd64/quota
 ```
 
 ---
@@ -58,20 +61,20 @@ If you want to modify the plugin and test it locally on your Ubuntu machine with
 ### Method A: Compile Directly on Ubuntu Host
 If you have Go 1.22+ installed on your Ubuntu host:
 ```bash
-# 1. Compile the dynamic library
+# 1. Compile the dynamic library (builds control-account-linux-amd64.so)
 make build
 # Or manually:
-go build -buildmode=c-shared -o control-account.so main.go
+go build -buildmode=c-shared -o control-account-linux-amd64.so main.go
 
 # 2. Copy the resulting .so directly to your Docker plugins directory
-cp control-account.so /ruta/a/tu/docker/plugins/control-account.so
+cp control-account-linux-amd64.so /ruta/a/tu/docker/plugins/control-account-linux-amd64.so
 ```
 
 ### Method B: Compile inside Docker (Zero host dependencies)
 If you prefer not to install Go or GCC on your host, compile inside an ephemeral container that exactly matches Linux Docker ABI:
 ```bash
 docker run --rm -v "$(pwd)":/src -w /src golang:1.22 \
-  go build -buildmode=c-shared -o control-account.so main.go
+  go build -buildmode=c-shared -o control-account-linux-amd64.so main.go
 ```
 
 ### Run Test Suite Locally
