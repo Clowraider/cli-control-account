@@ -1,7 +1,7 @@
 .PHONY: all build test clean lint
 
-BINARY_NAME=control-account.so
-HEADER_NAME=control-account.h
+BINARY_NAME=control-account-linux-amd64.so
+HEADER_NAME=control-account-linux-amd64.h
 
 all: test build
 
@@ -15,4 +15,4 @@ lint:
 	go vet ./...
 
 clean:
-	rm -f $(BINARY_NAME) $(HEADER_NAME)
+	rm -f $(BINARY_NAME) $(HEADER_NAME) control-account.so control-account.h

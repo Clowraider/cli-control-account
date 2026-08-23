@@ -82,13 +82,6 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: Prepare generic alias control-account.so
-        working-directory: release-assets
-        run: |
-          if [ -f control-account-linux-amd64.so ]; then
-            cp control-account-linux-amd64.so control-account.so
-          fi
-
       - name: Generate Checksums (SHA-256)
         working-directory: release-assets
         run: |
