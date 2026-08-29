@@ -1520,6 +1520,12 @@ body {
       await fetchClaudeQuota(file, authIndex);
     } else if (provider === 'codex') {
       await fetchCodexQuota(file, authIndex);
+    } else if (provider === 'kimi') {
+      // Live quota via Management api-call → GET https://api.kimi.com/coding/v1/usages
+      await fetchKimiQuota(file, authIndex);
+    } else if (provider === 'xai') {
+      // Live quota via Management api-call → GET cli-chat-proxy.grok.com/v1/billing
+      await fetchXaiQuota(file, authIndex);
     } else {
       quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
     }
@@ -1882,6 +1888,341 @@ body {
       plan: 'Plus',
       groups: [],
       error: 'Upstream quota request failed',
+    };
+  }
+
+  function unwrapApiCall(result) {
+    const status = result?.status_code ?? result?.statusCode ?? 0;
+    let body = result?.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (e) { body = null; }
+    }
+    if (!body && result?.bodyText) {
+      try { body = JSON.parse(result.bodyText); } catch (e) { body = null; }
+    }
+    return { status, body, ok: status >= 200 && status < 300 };
+  }
+
+  function toFiniteNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const n = Number(value.trim());
+      if (Number.isFinite(n)) return n;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value) && value.val !== undefined) {
+      return toFiniteNumber(value.val);
+    }
+    return null;
+  }
+
+  function remainingPercent(used, limit) {
+    if (typeof limit === 'number' && limit > 0 && typeof used === 'number') {
+      return Math.max(0, Math.min(100, Math.round(((limit - used) / limit) * 100)));
+    }
+    if (typeof used === 'number' && used > 0 && (limit === null || limit === 0)) return 0;
+    return 100;
+  }
+
+  function quotaRow(label, used, limit, resetAtMs, resetHint) {
+    const percent = remainingPercent(used, limit);
+    const resetInfo = formatResetInfo(resetAtMs, null);
+    let resetLabel = resetInfo.label;
+    if (!resetInfo.ms && resetHint) resetLabel = `Refreshes in ${resetHint}`;
+    const percentLabel = percent === 100 ? 'Quota available' : `${percent}% remaining`;
+    return {
+      label,
+      percent,
+      percentLabel,
+      resetLabel,
+      resetMs: resetInfo.ms,
+      warning: percent < 20,
+    };
+  }
+
+  function kimiWindowLabel(item, detail, windowObj, index) {
+    const named = item.name || item.title || item.scope || detail.name || detail.title;
+    if (typeof named === 'string' && named.trim()) return named.trim();
+    const duration = toFiniteNumber(windowObj.duration ?? item.duration ?? detail.duration);
+    const unit = String(windowObj.timeUnit || item.timeUnit || detail.timeUnit || '').toLowerCase();
+    if (duration && duration > 0) {
+      // Kimi coding /v1/usages does not send "5 hours". The 5h window is:
+      //   window.duration = 300, window.timeUnit = "TIME_UNIT_MINUTE"
+      // Convert to hours so the card can reuse the same "Five Hour Limit" /
+      // "Weekly Limit" labels as Claude and Antigravity. 300 is kept as a
+      // fallback in case timeUnit is missing (300 minutes = 5 hours).
+      let hours = null;
+      if (unit.includes('second')) hours = duration / 3600;
+      else if (unit.includes('minute')) hours = duration / 60;
+      else if (unit.includes('hour')) hours = duration;
+      else if (unit.includes('day')) hours = duration * 24;
+      else if (unit.includes('week')) hours = duration * 24 * 7;
+      if (hours === 5 || duration === 5 || duration === 300) return 'Five Hour Limit';
+      if (hours === 168 || unit.includes('week') || duration === 7) return 'Weekly Limit';
+      if (hours) return hours >= 24 ? `${hours / 24}d limit` : `${hours}h limit`;
+      return `${duration} ${unit || 'm'} limit`;
+    }
+    const blob = `${named || ''} ${item.window || ''}`.toLowerCase();
+    if (blob.includes('5') || blob.includes('hour')) return 'Five Hour Limit';
+    if (blob.includes('week')) return 'Weekly Limit';
+    return `Limit #${index + 1}`;
+  }
+
+  function parseKimiUsages(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    const rows = [];
+    const limits = Array.isArray(payload.limits) ? payload.limits : [];
+    limits.forEach((item, index) => {
+      if (!item || typeof item !== 'object') return;
+      const detail = item.detail && typeof item.detail === 'object' ? item.detail : item;
+      const windowObj = item.window && typeof item.window === 'object' ? item.window : {};
+      const limit = toFiniteNumber(detail.limit ?? item.limit);
+      let used = toFiniteNumber(detail.used ?? item.used);
+      if (used === null) {
+        const remaining = toFiniteNumber(detail.remaining ?? item.remaining);
+        if (remaining !== null && limit !== null) used = limit - remaining;
+      }
+      if (used === null && limit === null) return;
+      const resetAt = detail.reset_at || detail.resetAt || detail.reset_time || detail.resetTime || item.reset_at || item.resetAt;
+      const label = kimiWindowLabel(item, detail, windowObj, index);
+      rows.push(quotaRow(label, used ?? 0, limit ?? 0, resetAt, null));
+    });
+    if (payload.usage && typeof payload.usage === 'object') {
+      const usage = payload.usage;
+      const limit = toFiniteNumber(usage.limit);
+      let used = toFiniteNumber(usage.used);
+      if (used === null) {
+        const remaining = toFiniteNumber(usage.remaining);
+        if (remaining !== null && limit !== null) used = limit - remaining;
+      }
+      if (used !== null || limit !== null) {
+        const resetAt = usage.reset_at || usage.resetAt || usage.reset_time || usage.resetTime;
+        rows.push(quotaRow('Weekly Limit', used ?? 0, limit ?? 0, resetAt, null));
+      }
+    }
+    rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
+    return rows;
+  }
+
+  async function fetchKimiQuota(file, authIndex) {
+    try {
+      const res = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          authIndex: authIndex,
+          method: 'GET',
+          url: 'https://api.kimi.com/coding/v1/usages',
+          header: { Authorization: 'Bearer $TOKEN$' },
+        }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        const call = unwrapApiCall(result);
+        if (call.ok && call.body) {
+          const rows = parseKimiUsages(call.body);
+          quotaStore[file.name] = {
+            loading: false,
+            plan: 'Active',
+            groups: [{
+              title: 'KIMI USAGE',
+              models: 'Kimi / Moonshot',
+              rows: rows.length > 0 ? rows : [{
+                label: 'Quota',
+                percent: 100,
+                percentLabel: 'Quota available',
+                resetLabel: 'Quota available',
+                warning: false,
+              }],
+            }],
+            error: null,
+          };
+          return;
+        }
+        quotaStore[file.name] = {
+          loading: false,
+          plan: 'Active',
+          groups: [],
+          error: `Kimi quota request failed (${call.status || res.status})`,
+        };
+        return;
+      }
+    } catch (e) {}
+
+    quotaStore[file.name] = {
+      loading: false,
+      plan: 'Active',
+      groups: [],
+      error: 'Upstream Kimi quota request failed',
+    };
+  }
+
+  function parseXaiBilling(raw) {
+    const config = raw && typeof raw === 'object' ? (raw.config || raw) : null;
+    if (!config || typeof config !== 'object') return null;
+    const period = config.currentPeriod || config.current_period || {};
+    const usagePercent = toFiniteNumber(config.creditUsagePercent ?? config.credit_usage_percent);
+    const monthlyLimit = toFiniteNumber(config.monthlyLimit ?? config.monthly_limit);
+    const used = toFiniteNumber(config.used);
+    const onDemandCap = toFiniteNumber(config.onDemandCap ?? config.on_demand_cap);
+    const onDemandUsed = toFiniteNumber(config.onDemandUsed ?? config.on_demand_used);
+    const periodEnd = period.end || config.billingPeriodEnd || config.billing_period_end;
+    const periodStart = period.start || config.billingPeriodStart || config.billing_period_start;
+    const productUsage = Array.isArray(config.productUsage || config.product_usage)
+      ? (config.productUsage || config.product_usage)
+      : [];
+    const hasWeekly = usagePercent !== null || String(period.type || '').toLowerCase().includes('week') || productUsage.length > 0;
+    const hasMonthly = monthlyLimit !== null || used !== null;
+    if (!hasWeekly && !hasMonthly) return null;
+    return { usagePercent, monthlyLimit, used, onDemandCap, onDemandUsed, periodStart, periodEnd, productUsage, hasWeekly, hasMonthly };
+  }
+
+  function mergeXaiBilling(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return {
+      usagePercent: a.usagePercent ?? b.usagePercent,
+      monthlyLimit: a.monthlyLimit ?? b.monthlyLimit,
+      used: a.used ?? b.used,
+      onDemandCap: a.onDemandCap ?? b.onDemandCap,
+      onDemandUsed: a.onDemandUsed ?? b.onDemandUsed,
+      periodStart: a.periodStart || b.periodStart,
+      periodEnd: a.periodEnd || b.periodEnd,
+      productUsage: (a.productUsage && a.productUsage.length) ? a.productUsage : b.productUsage,
+      hasWeekly: a.hasWeekly || b.hasWeekly,
+      hasMonthly: a.hasMonthly || b.hasMonthly,
+    };
+  }
+
+  function xaiPlanName(billing) {
+    if (!billing) return 'Active';
+    if (billing.monthlyLimit === 150000) return 'SuperGrok Heavy';
+    if (billing.monthlyLimit === 15000) return 'SuperGrok';
+    if (billing.hasWeekly) return 'SuperGrok';
+    return 'Active';
+  }
+
+  function xaiUserId(file) {
+    const raw = file._raw || file;
+    const meta = raw.metadata || {};
+    const attrs = raw.attributes || {};
+    const candidates = [raw.sub, raw.subject, raw.user_id, raw.userId, meta.sub, attrs.sub];
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return '';
+  }
+
+  async function fetchXaiBillingConfig(authIndex, url, headers) {
+    const res = await apiFetch('/v0/management/api-call', {
+      method: 'POST',
+      body: JSON.stringify({
+        authIndex,
+        method: 'GET',
+        url,
+        header: headers,
+      }),
+    });
+    if (!res.ok) throw new Error('api-call http ' + res.status);
+    const result = await res.json();
+    const call = unwrapApiCall(result);
+    if (!call.ok) throw new Error('upstream ' + call.status);
+    return parseXaiBilling(call.body);
+  }
+
+  async function fetchXaiQuota(file, authIndex) {
+    // Headers match official grok-cli / CPAMC. The "(macos; aarch64)" token is
+    // grok-cli's client fingerprint, not the plugin GOOS. Linux .so builds must
+    // keep this User-Agent: xAI billing (cli-chat-proxy.grok.com) may 403 if it
+    // does not look like grok-cli. Same pattern as Antigravity's os_type=darwin.
+    const headers = {
+      Authorization: 'Bearer $TOKEN$',
+      'x-xai-token-auth': 'xai-grok-cli',
+      'x-grok-client-version': '0.2.91',
+      accept: '*/*',
+      'user-agent': 'grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)',
+    };
+    const userId = xaiUserId(file);
+    if (userId) headers['x-userid'] = userId;
+
+    try {
+      const results = await Promise.allSettled([
+        fetchXaiBillingConfig(authIndex, 'https://cli-chat-proxy.grok.com/v1/billing?format=credits', headers),
+        fetchXaiBillingConfig(authIndex, 'https://cli-chat-proxy.grok.com/v1/billing', headers),
+      ]);
+      const billing = mergeXaiBilling(
+        results[0].status === 'fulfilled' ? results[0].value : null,
+        results[1].status === 'fulfilled' ? results[1].value : null,
+      );
+
+      if (billing) {
+        const rows = [];
+        if (billing.hasWeekly && billing.usagePercent !== null) {
+          const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
+          const resetInfo = formatResetInfo(billing.periodEnd, null);
+          rows.push({
+            label: 'Weekly Limit',
+            percent: remaining,
+            percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
+            resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
+            resetMs: resetInfo.ms,
+            warning: remaining < 20,
+          });
+        }
+        if (billing.hasMonthly && billing.monthlyLimit !== null && billing.monthlyLimit > 0) {
+          const used = billing.used ?? 0;
+          rows.push(quotaRow('Monthly Credits', used, billing.monthlyLimit, billing.periodEnd, null));
+        }
+        if (billing.onDemandCap !== null && billing.onDemandCap > 0) {
+          rows.push(quotaRow('On-demand Cap', billing.onDemandUsed ?? 0, billing.onDemandCap, null, null));
+        }
+        (billing.productUsage || []).forEach((item) => {
+          if (!item || typeof item !== 'object') return;
+          const pct = toFiniteNumber(item.usagePercent ?? item.usage_percent);
+          if (pct === null) return;
+          const remaining = Math.max(0, Math.min(100, Math.round(100 - pct)));
+          rows.push({
+            label: `${item.product || 'Product'} usage`,
+            percent: remaining,
+            percentLabel: `${remaining}% remaining`,
+            resetLabel: 'Product window',
+            warning: remaining < 20,
+          });
+        });
+
+        quotaStore[file.name] = {
+          loading: false,
+          plan: xaiPlanName(billing),
+          groups: [{
+            title: 'GROK BILLING',
+            models: 'Grok / xAI',
+            rows: rows.length > 0 ? rows : [{
+              label: 'Quota',
+              percent: 100,
+              percentLabel: 'Quota available',
+              resetLabel: 'Quota available',
+              warning: false,
+            }],
+          }],
+          error: null,
+        };
+        return;
+      }
+    } catch (e) {}
+
+    quotaStore[file.name] = {
+      loading: false,
+      plan: 'Paid',
+      groups: [{
+        title: 'GROK / XAI',
+        models: 'Grok',
+        rows: [{
+          label: 'Paid API',
+          percent: 100,
+          percentLabel: 'API available (no quota totals)',
+          resetLabel: 'xAI does not expose quota totals for this OAuth credential',
+          warning: false,
+        }],
+      }],
+      error: null,
     };
   }
 

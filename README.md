@@ -1,4 +1,4 @@
-# CLIProxyAPI Control Account Plugin (`v0.3.0`)
+# CLIProxyAPI Control Account Plugin (`v0.3.1`)
 
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
