@@ -153,7 +153,7 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 			"schema_version": 1,
 			"metadata": map[string]any{
 				"Name":             "control-account",
-				"Version":          "0.3.0",
+				"Version":          "0.3.1",
 				"Author":           "Clowraider",
 				"Description":      "Quota management dashboard with account prefix support",
 				"GitHubRepository": "https://github.com/Clowraider/cli-control-account",
