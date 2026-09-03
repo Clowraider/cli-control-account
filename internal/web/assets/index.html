@@ -1558,11 +1558,21 @@ body {
     } catch (e) {}
   }
 
+  function normalizeProviderName(raw) {
+    const key = String(raw || 'antigravity').trim().toLowerCase().replace(/_/g, '-');
+    if (key === 'x-ai' || key === 'grok') return 'xai';
+    return key;
+  }
+
+  function resolveProvider(file) {
+    return normalizeProviderName(file?.provider || file?.type);
+  }
+
   function updateTabCounts() {
     const activeFiles = authFiles.filter(f => !f.disabled);
     const counts = { all: activeFiles.length, claude: 0, antigravity: 0, codex: 0, xai: 0, kimi: 0 };
     activeFiles.forEach(f => {
-      const p = (f.type || f.provider || 'antigravity').toLowerCase();
+      const p = resolveProvider(f);
       if (counts[p] !== undefined) counts[p]++;
     });
 
@@ -1602,7 +1612,7 @@ body {
     quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
     render();
 
-    const provider = (file.type || file.provider || 'antigravity').toLowerCase();
+    const provider = resolveProvider(file);
     const authIndex = file.auth_index ?? file.authIndex ?? file.name;
 
     if (provider === 'antigravity') {
@@ -2382,7 +2392,7 @@ body {
     // 1. From authFiles (only active / non-disabled files)
     (authFiles || []).forEach(file => {
       if (!file || file.disabled) return;
-      const p = (file.type || file.provider || 'antigravity').toLowerCase();
+      const p = resolveProvider(file);
       if (providerFilter !== 'all' && p !== providerFilter) return;
 
       const rawRecents = file.recent_requests || file.recentRequests || file._raw?.recent_requests || file._raw?.recentRequests;
@@ -2394,7 +2404,7 @@ body {
     // 2. From apiKeyUsage
     if (apiKeyUsage && typeof apiKeyUsage === 'object') {
       Object.entries(apiKeyUsage).forEach(([provKey, entries]) => {
-        const normProv = String(provKey || '').trim().toLowerCase();
+        const normProv = normalizeProviderName(provKey);
         if (providerFilter !== 'all' && normProv !== providerFilter) return;
 
         if (entries && typeof entries === 'object') {
@@ -2809,14 +2819,14 @@ body {
     const filtered = authFiles.filter(f => {
       if (f.disabled) return false;
       if (currentTab === 'all') return true;
-      const p = (f.type || f.provider || 'antigravity').toLowerCase();
+      const p = resolveProvider(f);
       return p === currentTab;
     });
 
     const sorted = sortFiles(filtered);
 
     if (sorted.length === 0) {
-      grid.innerHTML = `<div class=\"state-box\">No active credentials found for provider \"${currentTab}\".</div>`;
+      grid.innerHTML = `<div class="state-box">No active credentials found for provider "${currentTab}".</div>`;
       return;
     }
 
@@ -2849,7 +2859,7 @@ body {
 
   function renderCard(file) {
     const fileName = file.name;
-    const provider = (file.type || file.provider || 'antigravity').toLowerCase();
+    const provider = resolveProvider(file);
     const quota = quotaStore[fileName] || { loading: false, plan: 'Pro', groups: [] };
 
     const prefix = file.prefix || '';
