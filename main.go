@@ -52,6 +52,7 @@ import (
 
 	"control-account/internal/handlers"
 	"control-account/internal/lifecycle"
+	"control-account/internal/version"
 	"control-account/internal/web"
 )
 
@@ -153,7 +154,7 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 			"schema_version": 1,
 			"metadata": map[string]any{
 				"Name":             "control-account",
-				"Version":          "0.3.1",
+				"Version":          version.Version,
 				"Author":           "Clowraider",
 				"Description":      "Quota management dashboard with account prefix support",
 				"GitHubRepository": "https://github.com/Clowraider/cli-control-account",

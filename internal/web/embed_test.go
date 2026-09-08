@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"control-account/internal/version"
 	"control-account/internal/web"
 )
 
@@ -45,6 +46,22 @@ func TestGetAsset_Success(t *testing.T) {
 				t.Errorf("expected asset %q to contain %q", tt.name, tt.contentSub)
 			}
 		})
+	}
+}
+
+func TestGetAsset_VersionReplacement(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatalf("expected index.html to load without error, got: %v", err)
+	}
+
+	content := string(data)
+	expectedBadge := "v" + version.Version
+	if !strings.Contains(content, expectedBadge) {
+		t.Errorf("expected index.html to contain version badge %q", expectedBadge)
+	}
+	if strings.Contains(content, "__PLUGIN_VERSION__") {
+		t.Errorf("expected index.html not to contain placeholder '__PLUGIN_VERSION__'")
 	}
 }
 
@@ -157,5 +174,88 @@ func TestEmbeddedDashboard_HasNoRuntimeSubscriptionAssetDependency(t *testing.T)
 	}
 	if _, _, err := web.GetAsset("antigravity-subscription.js"); err == nil {
 		t.Fatal("separate Antigravity subscription asset must not remain embedded")
+	}
+}
+
+func TestEmbeddedDashboard_CPAMCQuotaStandardsSynchronization(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Scope 1: Codex headers and account ID extraction
+	codexRequirements := []string{
+		"codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)",
+		"'OpenAI-Beta': 'codex-1'",
+		"'Originator': 'Codex Desktop'",
+		"function parseIdTokenPayload(value)",
+		"extractCodexChatgptAccountId",
+		"Chatgpt-Account-Id",
+	}
+	for _, req := range codexRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain %q", req)
+		}
+	}
+
+	// Scope 2: Codex rate limit reset credits
+	creditRequirements := []string{
+		"https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+		"function parseCodexResetCredits(payload)",
+		"resetCredits",
+		"reset-credits-badge",
+	}
+	for _, req := range creditRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain %q", req)
+		}
+	}
+
+	// Scope 3: Claude profile and specific model windows
+	claudeRequirements := []string{
+		"https://api.anthropic.com/api/oauth/profile",
+		"function parseClaudePlan(profile)",
+		"has_claude_max",
+		"has_claude_pro",
+		"claude_team",
+		"seven_day_opus",
+		"seven_day_sonnet",
+		"seven_day_cowork",
+		"seven_day_oauth_apps",
+		"iguana_necktie",
+	}
+	for _, req := range claudeRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain %q", req)
+		}
+	}
+
+	// Scope 4: Server time clock skew synchronization
+	timeRequirements := []string{
+		"serverTimeOffsetMs",
+		"function syncServerTimeOffset(result)",
+		"Date.now() + serverTimeOffsetMs",
+	}
+	for _, req := range timeRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain %q", req)
+		}
+	}
+}
+
+func TestEmbeddedDashboard_ContainsCheckUpdateButton(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	if !strings.Contains(html, "btn-check-update") {
+		t.Fatal("expected index.html to contain btn-check-update")
+	}
+	if !strings.Contains(html, "checkForPluginUpdates") {
+		t.Fatal("expected index.html to contain checkForPluginUpdates")
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"control-account/internal/version"
 )
 
 func TestDispatcher_DefaultRouteServesQuota(t *testing.T) {
@@ -46,6 +48,9 @@ func TestDispatcher_DefaultMetadata(t *testing.T) {
 	}
 	if meta.Name != "Control Account Quota Plugin" {
 		t.Errorf("expected Name 'Control Account Quota Plugin', got %q", meta.Name)
+	}
+	if meta.Version != version.Version {
+		t.Errorf("expected Version %q, got %q", version.Version, meta.Version)
 	}
 	if len(meta.Menus) != 1 {
 		t.Fatalf("expected 1 menu item, got %d", len(meta.Menus))

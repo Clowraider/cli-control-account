@@ -15,3 +15,8 @@
 *.test
 coverage.out
 coverage.html
+
+# Local AI runtime & codegraph state
+.atl/
+.codegraph/
+
