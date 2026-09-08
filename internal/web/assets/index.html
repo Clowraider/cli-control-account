@@ -2193,6 +2193,21 @@ body {
     return 'Active';
   }
 
+  function xaiWeeklyUsagePercent(billing) {
+    if (!billing) return null;
+    // Prefer creditUsagePercent (parsed onto billing.usagePercent), then productUsage[].usagePercent.
+    const fromCredits = toFiniteNumber(billing.usagePercent);
+    if (fromCredits !== null) return fromCredits;
+    let chosen = null;
+    (billing.productUsage || []).forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const pct = toFiniteNumber(item.usagePercent ?? item.usage_percent);
+      if (pct === null) return;
+      if (chosen === null || pct > chosen) chosen = pct;
+    });
+    return chosen;
+  }
+
   function xaiUserId(file) {
     const raw = file._raw || file;
     const meta = raw.metadata || {};
@@ -2248,17 +2263,30 @@ body {
 
       if (billing) {
         const rows = [];
-        if (billing.hasWeekly && billing.usagePercent !== null) {
-          const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
+        if (billing.hasWeekly) {
+          const usagePercent = xaiWeeklyUsagePercent(billing);
           const resetInfo = formatResetInfo(billing.periodEnd, null);
-          rows.push({
-            label: 'Weekly Limit',
-            percent: remaining,
-            percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
-            resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
-            resetMs: resetInfo.ms,
-            warning: remaining < 20,
-          });
+          const resetLabel = resetInfo.ms ? resetInfo.label : 'Weekly window';
+          if (usagePercent !== null) {
+            const remaining = Math.max(0, Math.min(100, Math.round(100 - usagePercent)));
+            rows.push({
+              label: 'Weekly Limit',
+              percent: remaining,
+              percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
+              resetLabel,
+              resetMs: resetInfo.ms,
+              warning: remaining < 20,
+            });
+          } else {
+            rows.push({
+              label: 'Weekly Limit',
+              percent: 0,
+              percentLabel: 'Usage % not reported',
+              resetLabel,
+              resetMs: resetInfo.ms,
+              warning: false,
+            });
+          }
         }
         if (billing.hasMonthly && billing.monthlyLimit !== null && billing.monthlyLimit > 0) {
           const used = billing.used ?? 0;
@@ -2287,13 +2315,13 @@ body {
           groups: [{
             title: 'GROK BILLING',
             models: 'Grok / xAI',
-            rows: rows.length > 0 ? rows : [{
+rows: rows.length === 0 && !billing.hasWeekly ? [{
               label: 'Quota',
               percent: 100,
               percentLabel: 'Quota available',
               resetLabel: 'Quota available',
               warning: false,
-            }],
+            }] : rows,
           }],
           error: null,
         };

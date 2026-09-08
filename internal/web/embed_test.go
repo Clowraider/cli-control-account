@@ -159,3 +159,39 @@ func TestEmbeddedDashboard_HasNoRuntimeSubscriptionAssetDependency(t *testing.T)
 		t.Fatal("separate Antigravity subscription asset must not remain embedded")
 	}
 }
+
+func TestEmbeddedDashboard_XaiWeeklyLimitUsesHelperAndSkipsDummyQuota(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	helperSig := "function xaiWeeklyUsagePercent(billing)"
+	start := strings.Index(html, helperSig)
+	if start < 0 {
+		t.Fatal("expected helper xaiWeeklyUsagePercent(billing)")
+	}
+	rest := html[start+len(helperSig):]
+	nextFn := strings.Index(rest, "\n  function ")
+	if nextFn < 0 {
+		nextFn = len(rest)
+	}
+	helper := rest[:nextFn]
+	if !strings.Contains(helper, "creditUsagePercent") {
+		t.Fatal("xaiWeeklyUsagePercent must prefer creditUsagePercent")
+	}
+	if !strings.Contains(helper, "productUsage") {
+		t.Fatal("xaiWeeklyUsagePercent must fall back to productUsage[].usagePercent")
+	}
+
+	if strings.Contains(html, "billing.hasWeekly && billing.usagePercent !== null") {
+		t.Fatal("Weekly Limit must be drawn when hasWeekly even if usagePercent is null")
+	}
+	if !strings.Contains(html, "Usage % not reported") {
+		t.Fatal("when weekly percent is unknown, Weekly Limit must use an honest label, not dummy Quota available")
+	}
+	if !strings.Contains(html, "!billing.hasWeekly") {
+		t.Fatal("dummy Quota fallback must not be used when hasWeekly is true")
+	}
+}
