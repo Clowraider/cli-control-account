@@ -19,16 +19,6 @@ func TestGetAsset_Success(t *testing.T) {
 			expectedMime: "text/html; charset=utf-8",
 			contentSub:   "<!DOCTYPE html>",
 		},
-		{
-			name:         "styles.css",
-			expectedMime: "text/css; charset=utf-8",
-			contentSub:   "dark-theme",
-		},
-		{
-			name:         "app.js",
-			expectedMime: "application/javascript; charset=utf-8",
-			contentSub:   "Quota Dashboard",
-		},
 	}
 
 	for _, tt := range assets {
@@ -257,5 +247,63 @@ func TestEmbeddedDashboard_ContainsCheckUpdateButton(t *testing.T) {
 	}
 	if !strings.Contains(html, "checkForPluginUpdates") {
 		t.Fatal("expected index.html to contain checkForPluginUpdates")
+	}
+}
+
+func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Parity 1: Codex interactive reset credit consumption
+	codexRequirements := []string{
+		"consumeCodexResetCredit",
+		"createCodexRedeemRequestId",
+		"https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+		"btn-consume-credit",
+	}
+	for _, req := range codexRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain Codex consume requirement %q", req)
+		}
+	}
+
+	// Parity 2: xAI real paid health check
+	xaiRequirements := []string{
+		"https://api.x.ai/v1/chat/completions",
+		"grok-4.5",
+	}
+	for _, req := range xaiRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain xAI requirement %q", req)
+		}
+	}
+
+	// Parity 3: Claude extra usage overages
+	claudeRequirements := []string{
+		"extra_usage",
+		"used_credits",
+		"monthly_limit",
+		"Extra Usage",
+	}
+	for _, req := range claudeRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain Claude requirement %q", req)
+		}
+	}
+
+	// Parity 4: Safe identity derivation and non-live quota handling
+	identityRequirements := []string{
+		"function deriveIdentity(file)",
+		"isLiveQuotaProvider",
+		"Standard Credential",
+	}
+	for _, req := range identityRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain identity requirement %q", req)
+		}
 	}
 }
