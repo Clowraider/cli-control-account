@@ -675,6 +675,22 @@ body {
   letter-spacing: 0.01em;
 }
 
+.reset-credits-badge.actionable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.reset-credits-badge.actionable:hover {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.reset-credits-badge.actionable:active {
+  transform: scale(0.97);
+}
+
 /* Groups */
 .quota-group {
   display: flex;
@@ -1812,10 +1828,35 @@ body {
     } catch (e) {}
   }
 
+  const LIVE_QUOTA_PROVIDERS = ['antigravity', 'claude', 'codex', 'kimi', 'xai'];
+
   function normalizeProviderName(raw) {
-    const key = String(raw || 'antigravity').trim().toLowerCase().replace(/_/g, '-');
+    if (!raw) return 'unknown';
+    const key = String(raw).trim().toLowerCase().replace(/_/g, '-');
     if (key === 'x-ai' || key === 'grok') return 'xai';
+    if (key === 'anti-gravity') return 'antigravity';
+    if (key === 'aistudio') return 'gemini';
     return key;
+  }
+
+  function isLiveQuotaProvider(provider) {
+    return LIVE_QUOTA_PROVIDERS.includes(provider);
+  }
+
+  function deriveIdentity(file) {
+    const fullName = String(file?.name || '').trim();
+    let base = fullName;
+    if (base.toLowerCase().endsWith('.json') && base.length > 5) {
+      base = base.slice(0, -5);
+    }
+    // Never read file.account: in api-key credentials account contains the raw secret API key!
+    const email = typeof file?.email === 'string' ? file.email.trim() : '';
+    const projectId = typeof file?.project_id === 'string' ? file.project_id.trim() : (typeof file?.projectId === 'string' ? file.projectId.trim() : '');
+    const primary = email || projectId || base;
+    return {
+      primary: primary,
+      fullName: fullName,
+    };
   }
 
   function resolveProvider(file) {
@@ -1842,8 +1883,10 @@ body {
   function updateLoadedCount() {
     const activeFiles = authFiles.filter(f => !f.disabled);
     const loaded = activeFiles.filter(f => {
+      const p = resolveProvider(f);
+      if (!isLiveQuotaProvider(p)) return true;
       const q = quotaStore[f.name];
-      return q && q.groups && q.groups.length > 0;
+      return q && ((q.groups && q.groups.length > 0) || q.error);
     }).length;
     const el = document.getElementById('stat-loaded');
     if (el) el.textContent = loaded;
@@ -2153,6 +2196,23 @@ body {
                 });
               }
             }
+          }
+
+          if (bodyObj.extra_usage && bodyObj.extra_usage.is_enabled) {
+            const usedCredits = Number(bodyObj.extra_usage.used_credits) || 0;
+            const monthlyLimit = Number(bodyObj.extra_usage.monthly_limit) || 0;
+            const usedDollars = (usedCredits / 100).toFixed(2);
+            const limitDollars = (monthlyLimit / 100).toFixed(2);
+            const remainingPct = monthlyLimit > 0
+              ? Math.max(0, Math.min(100, Math.round((1 - usedCredits / monthlyLimit) * 100)))
+              : 100;
+            rows.push({
+              label: 'Extra Usage',
+              percent: remainingPct,
+              percentLabel: `$${usedDollars} / $${limitDollars}`,
+              resetLabel: monthlyLimit > 0 ? `${remainingPct}% remaining` : 'Usage active',
+              warning: remainingPct < 20,
+            });
           }
 
           rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -2516,6 +2576,86 @@ body {
     };
   }
 
+  function createCodexRedeemRequestId() {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  async function consumeCodexResetCredit(file) {
+    const fileName = file.name;
+    const quota = quotaStore[fileName];
+    const count = quota?.resetCredits?.availableCount ?? 0;
+    if (count <= 0) {
+      showToast('No reset credits available to consume', true);
+      return;
+    }
+
+    const authIndex = file.auth_index ?? file.authIndex;
+    if (!authIndex) {
+      showToast('Missing auth index for this credential', true);
+      return;
+    }
+
+    const idInfo = deriveIdentity(file);
+    if (!confirm(`Consume 1 reset credit for "${idInfo.primary}" to restore Codex rate limit?`)) {
+      return;
+    }
+
+    const headers = {
+      'Authorization': 'Bearer $TOKEN$',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'OpenAI-Beta': 'codex-1',
+      'Originator': 'Codex Desktop',
+      'User-Agent': 'codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)',
+    };
+    const accountId = extractCodexChatgptAccountId(file);
+    if (accountId) {
+      headers['Chatgpt-Account-Id'] = accountId;
+    }
+
+    showToast('Consuming reset credit...', false);
+
+    try {
+      const res = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          authIndex: authIndex,
+          method: 'POST',
+          url: 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume',
+          header: headers,
+          data: JSON.stringify({
+            redeem_request_id: createCodexRedeemRequestId(),
+          }),
+        }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        const call = unwrapApiCall(result);
+        if (call.ok) {
+          showToast('Successfully consumed 1 reset credit!', false);
+          await fetchCodexQuota(file, authIndex);
+          render();
+          return;
+        } else {
+          const errMsg = call.body?.error?.message || call.bodyText || `Status ${call.status}`;
+          showToast(`Error consuming credit: ${errMsg}`, true);
+        }
+      } else {
+        showToast('Request failed while consuming reset credit', true);
+      }
+    } catch (err) {
+      showToast(`Network error: ${err.message || err}`, true);
+    }
+  }
+
   function unwrapApiCall(result) {
     syncServerTimeOffset(result);
     const status = result?.status_code ?? result?.statusCode ?? 0;
@@ -2834,21 +2974,74 @@ body {
       }
     } catch (e) {}
 
+    // Fallback: Verify if this is an active paid account via xAI chat ping (matching CPAMC core)
+    try {
+      const pingRes = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          authIndex: authIndex,
+          method: 'POST',
+          url: 'https://api.x.ai/v1/chat/completions',
+          header: {
+            Authorization: 'Bearer $TOKEN$',
+            'Content-Type': 'application/json',
+          },
+          data: JSON.stringify({
+            model: 'grok-4.5',
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 1,
+            stream: false,
+          }),
+        }),
+      });
+
+      if (pingRes.ok) {
+        const pingResult = await pingRes.json();
+        const call = unwrapApiCall(pingResult);
+        if (call.ok) {
+          quotaStore[file.name] = {
+            loading: false,
+            plan: 'Paid',
+            groups: [{
+              title: 'GROK / XAI',
+              models: 'Grok',
+              rows: [{
+                label: 'Paid API',
+                percent: 100,
+                percentLabel: 'Active (Pay-as-you-go)',
+                resetLabel: 'API verified (grok-4.5 ping ok)',
+                warning: false,
+              }],
+            }],
+            error: null,
+          };
+          return;
+        } else {
+          const errMsg = call.body?.error?.message || call.bodyText || `Status ${call.status}`;
+          quotaStore[file.name] = {
+            loading: false,
+            plan: 'Paid',
+            groups: [],
+            error: `xAI API error (${call.status}): ${errMsg}`,
+          };
+          return;
+        }
+      }
+    } catch (pingErr) {
+      quotaStore[file.name] = {
+        loading: false,
+        plan: 'Paid',
+        groups: [],
+        error: `xAI health check failed: ${pingErr.message || pingErr}`,
+      };
+      return;
+    }
+
     quotaStore[file.name] = {
       loading: false,
       plan: 'Paid',
-      groups: [{
-        title: 'GROK / XAI',
-        models: 'Grok',
-        rows: [{
-          label: 'Paid API',
-          percent: 100,
-          percentLabel: 'API available (no quota totals)',
-          resetLabel: 'xAI does not expose quota totals for this OAuth credential',
-          warning: false,
-        }],
-      }],
-      error: null,
+      groups: [],
+      error: 'Upstream xAI quota request failed',
     };
   }
 
@@ -3388,12 +3581,22 @@ body {
         openEditModal(fName, curPrefix);
       });
     });
+
+    grid.querySelectorAll('.btn-consume-credit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fName = btn.dataset.filename;
+        const target = authFiles.find(f => f.name === fName);
+        if (target) consumeCodexResetCredit(target);
+      });
+    });
   }
 
   function renderCard(file) {
     const fileName = file.name;
     const provider = resolveProvider(file);
-    const quota = quotaStore[fileName] || { loading: false, plan: 'Pro', groups: [] };
+    const isLiveQuota = isLiveQuotaProvider(provider);
+    const quota = quotaStore[fileName] || { loading: false, plan: isLiveQuota ? 'Pro' : 'Standard', groups: [] };
 
     const prefix = file.prefix || '';
     const prefixDisplay = prefix.trim() !== ''
@@ -3403,11 +3606,30 @@ body {
     const editPencilSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
     const editBtn = `<button class="btn-edit-prefix" data-filename="${escapeHtml(fileName)}" data-prefix="${escapeHtml(prefix)}" title="${prefix ? 'Modificar perfil / prefijo' : 'Agregar perfil / prefijo'}" aria-label="Edit prefix">${editPencilSvg}</button>`;
 
-    const iconChar = provider === 'claude' ? '✳' : provider === 'codex' ? '⬡' : provider === 'kimi' ? 'K' : provider === 'xai' ? '⊘' : '▲';
-    const iconColor = provider === 'claude' ? 'var(--brand-claude)' : provider === 'codex' ? 'var(--brand-codex)' : provider === 'kimi' ? 'var(--brand-kimi)' : provider === 'xai' ? 'var(--brand-xai)' : 'var(--brand-antigravity)';
+    const PROVIDER_METAS = {
+      antigravity: { char: '▲', color: 'var(--brand-antigravity)' },
+      claude: { char: '✳', color: 'var(--brand-claude)' },
+      codex: { char: '⬡', color: 'var(--brand-codex)' },
+      kimi: { char: 'K', color: 'var(--brand-kimi)' },
+      xai: { char: '⊘', color: 'var(--brand-xai)' },
+      gemini: { char: '✦', color: '#38bdf8' },
+      vertex: { char: '◈', color: '#818cf8' },
+      qwen: { char: '◎', color: '#34d399' },
+      iflow: { char: '⇶', color: '#ec4899' },
+    };
+    const meta = PROVIDER_METAS[provider] || { char: '●', color: 'var(--text-muted)' };
+    const iconChar = meta.char;
+    const iconColor = meta.color;
 
     let bodyContent = '';
-    if (quota.loading) {
+    if (!isLiveQuota) {
+      bodyContent = `
+        <div style="padding: 16px 0; text-align: center; color: var(--text-muted); font-size: 11.5px;">
+          <div style="margin-bottom: 4px; color: var(--text-secondary); font-weight: 500;">Standard Credential</div>
+          <div>Static quota provider managed via host configuration.</div>
+        </div>
+      `;
+    } else if (quota.loading) {
       bodyContent = `
         <div style="padding: 20px 0; text-align: center; color: var(--text-muted); font-size: 12px;">
           <span class="spinning" style="display:inline-block; margin-right:5px;">🔄</span> Loading live quota data...
@@ -3448,13 +3670,15 @@ body {
       `;
     }
 
-    const planLabel = provider === 'antigravity'
-      ? getAntigravityPlanLabel(quota.subscription)
-      : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null);
+    const planLabel = !isLiveQuota
+      ? (file.plan || 'Standard Account')
+      : (provider === 'antigravity'
+          ? getAntigravityPlanLabel(quota.subscription)
+          : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null));
 
     const resetCreditsCount = quota.resetCredits?.availableCount;
     const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
-      ? `<span class="reset-credits-badge" title="Rate limit reset credits available">⚡ ${resetCreditsCount} reset credit${resetCreditsCount > 1 ? 's' : ''}</span>`
+      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount} reset credit${resetCreditsCount > 1 ? 's' : ''}</button>`
       : '';
 
     const planHtml = (planLabel || resetCreditsBadge) ? `
@@ -3466,6 +3690,8 @@ body {
             </div>
           </div>` : '';
 
+    const idInfo = deriveIdentity(file);
+
     return `
       <article class="card">
         <header class="card-head">
@@ -3473,7 +3699,7 @@ body {
             ${iconChar}
           </div>
           <div class="card-title-col">
-            <span class="file-name" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
+            <span class="file-name" title="${escapeHtml(idInfo.fullName)}">${escapeHtml(idInfo.primary)}</span>
             <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
               ${prefixDisplay}
               ${editBtn}
@@ -3495,8 +3721,8 @@ body {
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
           </div>
-          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" title="Refresh quota for this credential">
-            <span class="${quota.loading ? 'spinning' : ''}">🔄</span> Refresh quota
+          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
+            <span class="${quota.loading ? 'spinning' : ''}">🔄</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
           </button>
         </footer>
       </article>

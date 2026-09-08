@@ -99,18 +99,6 @@ func TestResourceHandler_ServeEmbeddedAssets(t *testing.T) {
 			expectedContentType: "text/html; charset=utf-8",
 			bodyContains:        "cards-grid",
 		},
-		{
-			name:                "stylesheet styles.css",
-			path:                "/v0/resource/plugins/control-account/quota/styles.css",
-			expectedContentType: "text/css; charset=utf-8",
-			bodyContains:        "dark-theme",
-		},
-		{
-			name:                "client script app.js",
-			path:                "/v0/resource/plugins/control-account/quota/app.js",
-			expectedContentType: "application/javascript; charset=utf-8",
-			bodyContains:        "fetchQuotaData",
-		},
 	}
 
 	for _, tt := range tests {

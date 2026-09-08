@@ -82,10 +82,6 @@ func (h *ResourceHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch relPath {
 	case "", "index.html", "/":
 		assetName = "index.html"
-	case "styles.css":
-		assetName = "styles.css"
-	case "app.js":
-		assetName = "app.js"
 	default:
 		// Clean and check arbitrary asset subpath
 		clean := path.Clean(relPath)

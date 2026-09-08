@@ -21,7 +21,7 @@ var ErrAssetNotFound = errors.New("asset not found")
 // ErrInvalidPath is returned when the path is malformed or attempts directory traversal.
 var ErrInvalidPath = errors.New("invalid or unsafe asset path")
 
-// GetAsset reads a file from embedded assets by name (e.g., "index.html", "styles.css", "app.js").
+// GetAsset reads a file from embedded assets by name (e.g., "index.html").
 // Returns file content, resolved MIME content-type, and error if not found or invalid.
 func GetAsset(assetName string) ([]byte, string, error) {
 	cleanName := path.Clean(strings.TrimSpace(assetName))
