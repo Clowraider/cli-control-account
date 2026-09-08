@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"control-account/internal/version"
 )
 
 func TestGetDispatcher_Singleton(t *testing.T) {
@@ -53,8 +55,8 @@ func TestHandlePluginMethod(t *testing.T) {
 	if err := json.Unmarshal(envReg.Result, &registration); err != nil {
 		t.Fatalf("failed to unmarshal registration metadata: %v", err)
 	}
-	if registration.Metadata.Version != "0.3.1" {
-		t.Fatalf("expected plugin version 0.3.1, got %q", registration.Metadata.Version)
+	if registration.Metadata.Version != version.Version {
+		t.Fatalf("expected plugin version %q, got %q", version.Version, registration.Metadata.Version)
 	}
 
 	// 2. Test management.register

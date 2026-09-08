@@ -80,6 +80,78 @@ body {
   letter-spacing: -0.01em;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  letter-spacing: 0.02em;
+}
+
+.btn-check-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.btn-check-update:hover {
+  background: var(--border-color);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.btn-check-update:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-check-update.checking .update-icon {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+.btn-check-update.up-to-date {
+  color: var(--meter-text-green);
+  border-color: rgba(35, 134, 54, 0.4);
+  background: rgba(35, 134, 54, 0.1);
+}
+
+.btn-check-update.update-available {
+  color: #58a6ff;
+  border-color: rgba(56, 139, 253, 0.5);
+  background: rgba(56, 139, 253, 0.15);
+  font-weight: 600;
+}
+
+.btn-check-update.update-error {
+  color: var(--meter-text-warning);
+  border-color: rgba(210, 153, 34, 0.4);
+  background: rgba(210, 153, 34, 0.1);
+}
+
 .meta-stats {
   display: flex;
   align-items: center;
@@ -579,6 +651,28 @@ body {
 .plan-badge {
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.plan-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reset-credits-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  letter-spacing: 0.01em;
 }
 
 /* Groups */
@@ -1098,7 +1192,14 @@ body {
     <!-- Header -->
     <header class="page-header">
       <div class="title-wrap">
-        <h1>Quota Management</h1>
+        <div class="title-row">
+          <h1>Quota Management</h1>
+          <span class="version-badge">v__PLUGIN_VERSION__</span>
+          <button id="btn-check-update" class="btn-check-update" title="Check for updates on GitHub" aria-label="Check for updates">
+            <span id="update-icon" class="update-icon">↻</span>
+            <span id="update-text" class="update-text">Check update</span>
+          </button>
+        </div>
         <div class="meta-stats">
           <span class="stat-dot"></span>
           <span><strong id="stat-total" style="color:var(--text-primary);">0</strong> credentials</span>
@@ -1248,6 +1349,28 @@ body {
   let authFiles = [];
   let apiKeyUsage = {};
   let quotaStore = {};
+  let serverTimeOffsetMs = 0;
+
+  function syncServerTimeOffset(result) {
+    if (!result || typeof result !== 'object') return;
+    const header = result.header || result.headers;
+    if (!header || typeof header !== 'object') return;
+
+    let dateHeader = header.date || header.Date;
+    if (!dateHeader) {
+      const dateEntry = Object.entries(header).find(([key]) => key.toLowerCase() === 'date');
+      if (dateEntry) dateHeader = dateEntry[1];
+    }
+    if (Array.isArray(dateHeader)) {
+      dateHeader = dateHeader[0];
+    }
+    if (typeof dateHeader === 'string' && dateHeader.trim()) {
+      const serverTime = new Date(dateHeader).getTime();
+      if (Number.isFinite(serverTime)) {
+        serverTimeOffsetMs = serverTime - Date.now();
+      }
+    }
+  }
 
   const BUCKET_COUNT = 20;
 
@@ -1339,6 +1462,7 @@ body {
     if (!response.ok) throw new Error(`Subscription proxy request failed with status ${response.status}`);
 
     const result = await response.json();
+    syncServerTimeOffset(result);
     const statusCode = Number(result.statusCode !== undefined ? result.statusCode : result.status_code);
     if (!Number.isFinite(statusCode) || statusCode < 200 || statusCode >= 300) {
       throw new Error(`Subscription upstream request failed with status ${statusCode || 'unknown'}`);
@@ -1374,7 +1498,137 @@ body {
     setupSortListener();
     setupModalListeners();
     btnRefreshAll.addEventListener('click', refreshAll);
+    const btnCheck = document.getElementById('btn-check-update');
+    if (btnCheck) {
+      btnCheck.addEventListener('click', checkForPluginUpdates);
+    }
     loadAuthFiles();
+  }
+
+  let updateResetTimer = null;
+
+  function compareSemver(v1, v2) {
+    const parse = (v) => {
+      return String(v || '')
+        .trim()
+        .replace(/^[vV]/, '')
+        .split(/[-+]/)[0]
+        .split('.')
+        .map(p => parseInt(p, 10) || 0);
+    };
+    const a = parse(v1);
+    const b = parse(v2);
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      const numA = a[i] || 0;
+      const numB = b[i] || 0;
+      if (numA > numB) return 1;
+      if (numA < numB) return -1;
+    }
+    return 0;
+  }
+
+  async function checkForPluginUpdates() {
+    const btn = document.getElementById('btn-check-update');
+    if (!btn) return;
+    const icon = document.getElementById('update-icon');
+    const text = document.getElementById('update-text');
+
+    if (btn.classList.contains('update-available') && btn.dataset.releaseUrl) {
+      window.open(btn.dataset.releaseUrl, '_blank');
+      return;
+    }
+
+    if (updateResetTimer) {
+      clearTimeout(updateResetTimer);
+      updateResetTimer = null;
+    }
+
+    btn.disabled = true;
+    btn.classList.remove('up-to-date', 'update-available', 'update-error');
+    btn.classList.add('checking');
+    if (icon) icon.textContent = '↻';
+    if (text) text.textContent = 'Checking...';
+
+    try {
+      const res = await apiFetch('/v0/management/api-call', {
+        method: 'POST',
+        body: JSON.stringify({
+          method: 'GET',
+          url: 'https://api.github.com/repos/Clowraider/cli-control-account/releases/latest',
+          header: {
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'control-account-plugin',
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`api-call http ${res.status}`);
+      }
+
+      const result = await res.json();
+      let release = null;
+      if (result) {
+        if (result.tag_name || result.name) {
+          release = result;
+        } else {
+          const call = unwrapApiCall(result);
+          if (call.ok && call.body && typeof call.body === 'object') {
+            release = call.body;
+          } else if (result.body) {
+            if (typeof result.body === 'object') {
+              release = result.body;
+            } else if (typeof result.body === 'string') {
+              try { release = JSON.parse(result.body); } catch (e) {}
+            }
+          }
+        }
+      }
+
+      const tag = release?.tag_name || release?.name;
+      if (!tag) {
+        throw new Error('No release tag found in response');
+      }
+
+      const current = '__PLUGIN_VERSION__';
+      btn.classList.remove('checking');
+      btn.disabled = false;
+
+      if (compareSemver(tag, current) > 0) {
+        btn.classList.add('update-available');
+        btn.dataset.releaseUrl = release.html_url || 'https://github.com/Clowraider/cli-control-account/releases';
+        btn.title = `Update ${tag} available (click to view release)`;
+        if (icon) icon.textContent = '★';
+        if (text) text.textContent = `Update ${tag} available`;
+      } else {
+        btn.classList.add('up-to-date');
+        btn.title = 'Plugin is up to date';
+        if (icon) icon.textContent = '✓';
+        if (text) text.textContent = 'Up to date';
+        updateResetTimer = setTimeout(() => {
+          btn.classList.remove('up-to-date');
+          if (icon) icon.textContent = '↻';
+          if (text) text.textContent = 'Check update';
+          btn.title = 'Check for updates on GitHub';
+        }, 4000);
+      }
+    } catch (err) {
+      console.warn('Check update failed:', err);
+      btn.classList.remove('checking');
+      btn.disabled = false;
+      btn.classList.add('update-error');
+      btn.title = 'Failed to check for updates';
+      if (icon) icon.textContent = '⚠';
+      if (text) text.textContent = 'Check failed';
+      updateResetTimer = setTimeout(() => {
+        btn.classList.remove('update-error');
+        if (icon) icon.textContent = '↻';
+        if (text) text.textContent = 'Check update';
+        btn.title = 'Check for updates on GitHub';
+      }, 3500);
+    }
   }
 
   function setupTabListeners() {
@@ -1672,6 +1926,7 @@ body {
 
         if (res.ok) {
           const result = await res.json();
+          syncServerTimeOffset(result);
           if (result.status_code >= 200 && result.status_code < 300 || result.statusCode >= 200 && result.statusCode < 300) {
             let bodyObj = result.body;
             if (typeof bodyObj === 'string') {
@@ -1766,45 +2021,144 @@ body {
     });
   }
 
+  function parseClaudePlan(profile) {
+    if (!profile || typeof profile !== 'object') return 'Pro';
+    const account = profile.account;
+    const org = profile.organization;
+
+    if (account?.has_claude_max) return 'Max';
+    if (account?.has_claude_pro) return 'Pro';
+
+    const orgType = typeof org?.organization_type === 'string' ? org.organization_type.toLowerCase() : '';
+    const subStatus = typeof org?.subscription_status === 'string' ? org.subscription_status.toLowerCase() : '';
+    if (orgType === 'claude_team' && subStatus === 'active') {
+      return 'Team';
+    }
+
+    if (account?.has_claude_max === false && account?.has_claude_pro === false) {
+      return 'Free';
+    }
+
+    return 'Pro';
+  }
+
   async function fetchClaudeQuota(file, authIndex) {
     try {
-      const res = await apiFetch('/v0/management/api-call', {
-        method: 'POST',
-        body: JSON.stringify({
-          authIndex: authIndex,
-          method: 'GET',
-          url: 'https://api.anthropic.com/api/oauth/usage',
-          header: {
-            'Authorization': 'Bearer $TOKEN$',
-            'Content-Type': 'application/json',
-            'anthropic-beta': 'oauth-2025-04-20',
-          },
+      const headers = {
+        'Authorization': 'Bearer $TOKEN$',
+        'Content-Type': 'application/json',
+        'anthropic-beta': 'oauth-2025-04-20',
+      };
+
+      const [usageSettled, profileSettled] = await Promise.allSettled([
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'GET',
+            url: 'https://api.anthropic.com/api/oauth/usage',
+            header: headers,
+          }),
         }),
-      });
-      if (res.ok) {
-        const result = await res.json();
-        let bodyObj = result.body;
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'GET',
+            url: 'https://api.anthropic.com/api/oauth/profile',
+            header: headers,
+          }),
+        }),
+      ]);
+
+      let plan = 'Pro';
+      if (profileSettled.status === 'fulfilled' && profileSettled.value.ok) {
+        try {
+          const profileRes = await profileSettled.value.json();
+          syncServerTimeOffset(profileRes);
+          let profileBody = profileRes.body;
+          if (typeof profileBody === 'string') {
+            try { profileBody = JSON.parse(profileBody); } catch (e) {}
+          } else if (!profileBody && profileRes.bodyText) {
+            try { profileBody = JSON.parse(profileRes.bodyText); } catch (e) {}
+          }
+          plan = parseClaudePlan(profileBody);
+        } catch (e) {}
+      }
+
+      if (usageSettled.status === 'fulfilled' && usageSettled.value.ok) {
+        const usageRes = await usageSettled.value.json();
+        syncServerTimeOffset(usageRes);
+        let bodyObj = usageRes.body;
         if (typeof bodyObj === 'string') {
           try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
+        } else if (!bodyObj && usageRes.bodyText) {
+          try { bodyObj = JSON.parse(usageRes.bodyText); } catch (e) {}
         }
-        if (bodyObj) {
+        if (bodyObj && typeof bodyObj === 'object') {
           const rows = [];
-          if (bodyObj.five_hour && typeof bodyObj.five_hour.utilization === 'number') {
-            const pct = Math.round((1 - bodyObj.five_hour.utilization) * 100);
-            const resetLabel = formatDuration(bodyObj.five_hour.resets_at);
-            const resetMs = bodyObj.five_hour.resets_at ? new Date(bodyObj.five_hour.resets_at).getTime() : null;
-            rows.push({ label: 'Five Hour Limit', percent: pct, percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`, resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Quota available', resetMs: resetMs, warning: pct < 20 });
+          const windowDefs = [
+            { key: 'five_hour', label: 'Five Hour Limit' },
+            { key: 'seven_day', label: 'Weekly Limit' },
+            { key: 'seven_day_opus', label: 'Opus Limit' },
+            { key: 'seven_day_sonnet', label: 'Sonnet Limit' },
+            { key: 'seven_day_cowork', label: 'Cowork Limit' },
+            { key: 'seven_day_oauth_apps', label: 'OAuth Apps Limit' },
+            { key: 'iguana_necktie', label: 'Fable Limit' },
+          ];
+
+          for (const def of windowDefs) {
+            const win = bodyObj[def.key];
+            if (win && typeof win === 'object' && ('utilization' in win || 'resets_at' in win)) {
+              let util = null;
+              if (typeof win.utilization === 'number') {
+                util = win.utilization;
+              } else if (typeof win.utilization === 'string') {
+                const parsed = parseFloat(win.utilization);
+                if (!isNaN(parsed)) util = parsed;
+              }
+              const pct = util !== null ? Math.max(0, Math.min(100, Math.round((1 - util) * 100))) : 100;
+              const resetInfo = formatResetInfo(win.resets_at, null);
+              const resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+              rows.push({
+                label: def.label,
+                percent: pct,
+                percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`,
+                resetLabel: resetLabel,
+                resetMs: resetInfo.ms,
+                warning: pct < 20,
+              });
+            }
           }
-          if (bodyObj.seven_day && typeof bodyObj.seven_day.utilization === 'number') {
-            const pct = Math.round((1 - bodyObj.seven_day.utilization) * 100);
-            const resetLabel = formatDuration(bodyObj.seven_day.resets_at);
-            const resetMs = bodyObj.seven_day.resets_at ? new Date(bodyObj.seven_day.resets_at).getTime() : null;
-            rows.push({ label: 'Weekly Limit', percent: pct, percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`, resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Quota available', resetMs: resetMs, warning: pct < 20 });
+
+          if (!rows.some(r => r.label === 'Fable Limit') && Array.isArray(bodyObj.limits)) {
+            const fableLimit = bodyObj.limits.find(l => {
+              const kind = String(l?.kind || '').toLowerCase();
+              const modelName = String(l?.scope?.model?.display_name || '').toLowerCase();
+              return kind === 'weekly_scoped' && (modelName === 'fable' || modelName === 'fable 5') && l?.percent !== undefined;
+            });
+            if (fableLimit) {
+              const utilPct = Number(fableLimit.percent);
+              if (!isNaN(utilPct)) {
+                const pct = Math.max(0, Math.min(100, Math.round(100 - utilPct)));
+                const resetInfo = formatResetInfo(fableLimit.resets_at, null);
+                const resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+                rows.push({
+                  label: 'Fable Limit',
+                  percent: pct,
+                  percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`,
+                  resetLabel: resetLabel,
+                  resetMs: resetInfo.ms,
+                  warning: pct < 20,
+                });
+              }
+            }
           }
+
           rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
           quotaStore[file.name] = {
             loading: false,
-            plan: 'Pro',
+            plan: plan,
             groups: [{
               title: 'CLAUDE USAGE',
               models: 'Claude 3.7 Sonnet / Opus',
@@ -1825,6 +2179,7 @@ body {
   }
 
   function formatResetInfo(resetAt, resetAfterSeconds) {
+    const now = Date.now() + serverTimeOffsetMs;
     let resetMs = null;
     if (resetAt) {
       if (typeof resetAt === 'number') {
@@ -1834,12 +2189,12 @@ body {
         if (!isNaN(parsed)) resetMs = parsed;
       }
     } else if (typeof resetAfterSeconds === 'number' && resetAfterSeconds > 0) {
-      resetMs = Date.now() + resetAfterSeconds * 1000;
+      resetMs = now + resetAfterSeconds * 1000;
     }
 
     if (!resetMs) return { label: 'Quota available', ms: null };
 
-    const delta = resetMs - Date.now();
+    const delta = resetMs - now;
     if (delta <= 0) return { label: 'Quota available', ms: resetMs };
 
     const totalMinutes = Math.floor(delta / 60000);
@@ -1929,35 +2284,210 @@ body {
     return rows;
   }
 
+  function decodeBase64UrlPayload(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const normalized = trimmed.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+        return window.atob(padded);
+      }
+      if (typeof atob === 'function') {
+        return atob(padded);
+      }
+      if (typeof Buffer !== 'undefined') {
+        return Buffer.from(padded, 'base64').toString('utf8');
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function parseIdTokenPayload(value) {
+    if (!value) return null;
+    if (typeof value === 'object') {
+      return Array.isArray(value) ? null : value;
+    }
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {}
+    const segments = trimmed.split('.');
+    if (segments.length < 2) return null;
+    const decoded = decodeBase64UrlPayload(segments[1]);
+    if (!decoded) return null;
+    try {
+      const parsed = JSON.parse(decoded);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {}
+    return null;
+  }
+
+  function extractCodexChatgptAccountId(file) {
+    if (!file) return null;
+
+    function getAccountIdFromToken(tokenVal) {
+      if (!tokenVal) return null;
+      const payload = parseIdTokenPayload(tokenVal);
+      if (payload && typeof payload === 'object') {
+        const auth = payload['https://api.openai.com/auth'];
+        const accountId = (auth && typeof auth === 'object' ? (auth.chatgpt_account_id || auth.chatgptAccountId) : null) ||
+          payload.chatgpt_account_id || payload.chatgptAccountId;
+        if (typeof accountId === 'string' && accountId.trim()) {
+          return accountId.trim();
+        }
+      }
+      return null;
+    }
+
+    if (typeof file === 'string' || (file && !file.name && (file.chatgpt_account_id || file['https://api.openai.com/auth']))) {
+      const id = getAccountIdFromToken(file);
+      if (id) return id;
+    }
+
+    const candidates = [
+      file.id_token,
+      file.metadata?.id_token,
+      file.attributes?.id_token,
+      file._raw?.id_token,
+      file._raw?.metadata?.id_token,
+      file._raw?.attributes?.id_token,
+    ];
+    for (const candidate of candidates) {
+      const id = getAccountIdFromToken(candidate);
+      if (id) return id;
+    }
+
+    const fallback = file.project_id || file._raw?.account_id || file._raw?.chatgpt_account_id;
+    if (typeof fallback === 'string' && fallback.trim()) {
+      return fallback.trim();
+    }
+    return null;
+  }
+
+  function parseCodexResetCredits(payload) {
+    if (!payload) return null;
+    let record = payload;
+    if (typeof record === 'string') {
+      try { record = JSON.parse(record.trim()); } catch { return null; }
+    }
+    if (!record || typeof record !== 'object') return null;
+
+    let availableCount = null;
+    if (typeof record.available_count === 'number' && Number.isFinite(record.available_count)) {
+      availableCount = record.available_count;
+    } else if (typeof record.availableCount === 'number' && Number.isFinite(record.availableCount)) {
+      availableCount = record.availableCount;
+    } else if (typeof record.available_count === 'string' && record.available_count.trim()) {
+      const n = Number(record.available_count);
+      if (Number.isFinite(n)) availableCount = n;
+    } else if (typeof record.availableCount === 'string' && record.availableCount.trim()) {
+      const n = Number(record.availableCount);
+      if (Number.isFinite(n)) availableCount = n;
+    }
+
+    let applicableAvailableCount = null;
+    if (typeof record.applicable_available_count === 'number' && Number.isFinite(record.applicable_available_count)) {
+      applicableAvailableCount = record.applicable_available_count;
+    } else if (typeof record.applicableAvailableCount === 'number' && Number.isFinite(record.applicableAvailableCount)) {
+      applicableAvailableCount = record.applicableAvailableCount;
+    } else if (typeof record.applicable_available_count === 'string' && record.applicable_available_count.trim()) {
+      const n = Number(record.applicable_available_count);
+      if (Number.isFinite(n)) applicableAvailableCount = n;
+    } else if (typeof record.applicableAvailableCount === 'string' && record.applicableAvailableCount.trim()) {
+      const n = Number(record.applicableAvailableCount);
+      if (Number.isFinite(n)) applicableAvailableCount = n;
+    }
+
+    const rawCredits = Array.isArray(record.credits) ? record.credits : [];
+    const validCredits = rawCredits.filter(c => {
+      if (!c || typeof c !== 'object') return false;
+      const rType = String(c.reset_type || c.resetType || '').trim();
+      const status = String(c.status || '').trim();
+      return rType === 'codex_rate_limits' && status === 'available';
+    });
+
+    const count = availableCount !== null ? availableCount :
+      applicableAvailableCount !== null ? applicableAvailableCount :
+      (rawCredits.length > 0 ? validCredits.length : 0);
+
+    return {
+      availableCount: count,
+      applicableAvailableCount: applicableAvailableCount,
+      credits: validCredits,
+    };
+  }
+
   async function fetchCodexQuota(file, authIndex) {
+    let resetCredits = null;
     try {
       const headers = {
         'Authorization': 'Bearer $TOKEN$',
         'Content-Type': 'application/json',
-        'User-Agent': 'codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal',
+        'Accept': 'application/json',
+        'OpenAI-Beta': 'codex-1',
+        'Originator': 'Codex Desktop',
+        'User-Agent': 'codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)',
       };
-      const accountId = file.project_id || file._raw?.account_id || file._raw?.chatgpt_account_id;
+      const accountId = extractCodexChatgptAccountId(file);
       if (accountId) {
         headers['Chatgpt-Account-Id'] = accountId;
       }
 
-      const res = await apiFetch('/v0/management/api-call', {
-        method: 'POST',
-        body: JSON.stringify({
-          authIndex: authIndex,
-          method: 'GET',
-          url: 'https://chatgpt.com/backend-api/wham/usage',
-          header: headers,
+      const [usageSettled, creditsSettled] = await Promise.allSettled([
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'GET',
+            url: 'https://chatgpt.com/backend-api/wham/usage',
+            header: headers,
+          }),
         }),
-      });
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'GET',
+            url: 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits',
+            header: headers,
+          }),
+        }),
+      ]);
 
-      if (res.ok) {
-        const result = await res.json();
-        let bodyObj = result.body;
+      if (creditsSettled.status === 'fulfilled' && creditsSettled.value.ok) {
+        try {
+          const creditsRes = await creditsSettled.value.json();
+          syncServerTimeOffset(creditsRes);
+          let creditsBody = creditsRes.body;
+          if (typeof creditsBody === 'string') {
+            try { creditsBody = JSON.parse(creditsBody); } catch (e) {}
+          } else if (!creditsBody && creditsRes.bodyText) {
+            try { creditsBody = JSON.parse(creditsRes.bodyText); } catch (e) {}
+          }
+          resetCredits = parseCodexResetCredits(creditsBody);
+        } catch (e) {}
+      }
+
+      if (usageSettled.status === 'fulfilled' && usageSettled.value.ok) {
+        const usageRes = await usageSettled.value.json();
+        syncServerTimeOffset(usageRes);
+        let bodyObj = usageRes.body;
         if (typeof bodyObj === 'string') {
           try { bodyObj = JSON.parse(bodyObj); } catch (e) {}
+        } else if (!bodyObj && usageRes.bodyText) {
+          try { bodyObj = JSON.parse(usageRes.bodyText); } catch (e) {}
         }
         if (bodyObj) {
+          if (!resetCredits && (bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits)) {
+            resetCredits = parseCodexResetCredits(bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits);
+          }
           const rawPlan = bodyObj.plan_type || bodyObj.planType || 'plus';
           const planDisplay = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
           const rows = buildCodexQuotaRows(bodyObj);
@@ -1965,6 +2495,7 @@ body {
           quotaStore[file.name] = {
             loading: false,
             plan: planDisplay,
+            resetCredits: resetCredits,
             groups: [{
               title: 'CODEX RATE LIMITS',
               models: 'GPT-5.6 / Codex',
@@ -1979,12 +2510,14 @@ body {
     quotaStore[file.name] = {
       loading: false,
       plan: 'Plus',
+      resetCredits: resetCredits,
       groups: [],
       error: 'Upstream quota request failed',
     };
   }
 
   function unwrapApiCall(result) {
+    syncServerTimeOffset(result);
     const status = result?.status_code ?? result?.statusCode ?? 0;
     let body = result?.body;
     if (typeof body === 'string') {
@@ -2323,7 +2856,7 @@ body {
     if (!dateStr) return '';
     const target = new Date(dateStr).getTime();
     if (isNaN(target)) return '';
-    const delta = target - Date.now();
+    const delta = target - (Date.now() + serverTimeOffsetMs);
     if (delta <= 0) return '';
     const totalMinutes = Math.floor(delta / 60000);
     const days = Math.floor(totalMinutes / 1440);
@@ -2918,10 +3451,19 @@ body {
     const planLabel = provider === 'antigravity'
       ? getAntigravityPlanLabel(quota.subscription)
       : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null);
-    const planHtml = planLabel ? `
+
+    const resetCreditsCount = quota.resetCredits?.availableCount;
+    const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
+      ? `<span class="reset-credits-badge" title="Rate limit reset credits available">⚡ ${resetCreditsCount} reset credit${resetCreditsCount > 1 ? 's' : ''}</span>`
+      : '';
+
+    const planHtml = (planLabel || resetCreditsBadge) ? `
           <div class="plan-row">
-            <span>Plan</span>
-            <span class="plan-badge">${escapeHtml(planLabel)}</span>
+            <span>${planLabel ? 'Plan' : 'Credits'}</span>
+            <div class="plan-badges">
+              ${planLabel ? `<span class="plan-badge">${escapeHtml(planLabel)}</span>` : ''}
+              ${resetCreditsBadge}
+            </div>
           </div>` : '';
 
     return `

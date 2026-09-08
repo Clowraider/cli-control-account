@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"control-account/internal/handlers"
+	"control-account/internal/version"
 )
 
 // Standard lifecycle event names.
@@ -122,7 +123,7 @@ func NewDispatcher() *Dispatcher {
 		metadata: PluginRegistration{
 			ID:          "control-account",
 			Name:        "Control Account Quota Plugin",
-			Version:     "1.0.0",
+			Version:     version.Version,
 			Author:      "CLIProxyAPI Team",
 			Description: "Account quota monitoring and management center dashboard plugin",
 			Menus: []PluginMenu{

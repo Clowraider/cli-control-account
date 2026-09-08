@@ -1,12 +1,15 @@
 package web
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"io/fs"
 	"mime"
 	"path"
 	"strings"
+
+	"control-account/internal/version"
 )
 
 //go:embed assets/*
@@ -34,6 +37,10 @@ func GetAsset(assetName string) ([]byte, string, error) {
 	data, err := fs.ReadFile(AssetsFS, fullPath)
 	if err != nil {
 		return nil, "", ErrAssetNotFound
+	}
+
+	if cleanName == "index.html" {
+		data = bytes.ReplaceAll(data, []byte("__PLUGIN_VERSION__"), []byte(version.Version))
 	}
 
 	mimeType := ResolveMIMEType(cleanName)
