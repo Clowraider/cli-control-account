@@ -48,12 +48,16 @@ func TestHandlePluginMethod(t *testing.T) {
 		t.Fatalf("expected OK envelope for plugin.register, got: %s", string(rawReg))
 	}
 	var registration struct {
-		Metadata struct {
+		SchemaVersion uint32 `json:"schema_version"`
+		Metadata      struct {
 			Version string `json:"Version"`
 		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(envReg.Result, &registration); err != nil {
 		t.Fatalf("failed to unmarshal registration metadata: %v", err)
+	}
+	if registration.SchemaVersion != 6 {
+		t.Fatalf("expected schema version 6, got %d", registration.SchemaVersion)
 	}
 	if registration.Metadata.Version != version.Version {
 		t.Fatalf("expected plugin version %q, got %q", version.Version, registration.Metadata.Version)
