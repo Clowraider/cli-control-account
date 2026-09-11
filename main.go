@@ -151,7 +151,7 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 	switch method {
 	case "plugin.register", "plugin.reconfigure":
 		registration := map[string]any{
-			"schema_version": 1,
+			"schema_version": 6,
 			"metadata": map[string]any{
 				"Name":             "control-account",
 				"Version":          version.Version,

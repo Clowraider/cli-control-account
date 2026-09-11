@@ -177,7 +177,7 @@ func TestEmbeddedDashboard_CPAMCQuotaStandardsSynchronization(t *testing.T) {
 
 	// Scope 1: Codex headers and account ID extraction
 	codexRequirements := []string{
-		"codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)",
+		"codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)",
 		"'OpenAI-Beta': 'codex-1'",
 		"'Originator': 'Codex Desktop'",
 		"function parseIdTokenPayload(value)",
@@ -264,6 +264,7 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 		"createCodexRedeemRequestId",
 		"https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
 		"btn-consume-credit",
+		"/v0/management/reset-quota",
 	}
 	for _, req := range codexRequirements {
 		if !strings.Contains(html, req) {

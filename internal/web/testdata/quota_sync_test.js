@@ -250,7 +250,7 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
     assert.equal(call.payload.header['Authorization'], 'Bearer $TOKEN$');
     assert.equal(call.payload.header['OpenAI-Beta'], 'codex-1');
     assert.equal(call.payload.header['Originator'], 'Codex Desktop');
-    assert.equal(call.payload.header['User-Agent'], 'codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)');
+    assert.equal(call.payload.header['User-Agent'], 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)');
     assert.equal(call.payload.header['Chatgpt-Account-Id'], 'acc-codex-999');
   }
 

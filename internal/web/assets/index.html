@@ -2493,7 +2493,7 @@ body {
         'Accept': 'application/json',
         'OpenAI-Beta': 'codex-1',
         'Originator': 'Codex Desktop',
-        'User-Agent': 'codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)',
+        'User-Agent': 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)',
       };
       const accountId = extractCodexChatgptAccountId(file);
       if (accountId) {
@@ -2613,7 +2613,7 @@ body {
       'Accept': 'application/json',
       'OpenAI-Beta': 'codex-1',
       'Originator': 'Codex Desktop',
-      'User-Agent': 'codex-tui/0.149.1 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.149.1)',
+      'User-Agent': 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)',
     };
     const accountId = extractCodexChatgptAccountId(file);
     if (accountId) {
@@ -2640,6 +2640,14 @@ body {
         const result = await res.json();
         const call = unwrapApiCall(result);
         if (call.ok) {
+          try {
+            await apiFetch('/v0/management/reset-quota', {
+              method: 'POST',
+              body: JSON.stringify({ auth_index: authIndex }),
+            });
+          } catch (e) {
+            console.warn('Failed to clear gateway quota cooldown via /v0/management/reset-quota:', e);
+          }
           showToast('Successfully consumed 1 reset credit!', false);
           await fetchCodexQuota(file, authIndex);
           render();
