@@ -2389,6 +2389,38 @@ body {
     return null;
   }
 
+  function extractCodexPlanType(file) {
+    if (!file) return null;
+    if (file.plan_type && typeof file.plan_type === 'string') return file.plan_type.trim();
+    if (file._raw?.plan_type && typeof file._raw.plan_type === 'string') return file._raw.plan_type.trim();
+
+    function getPlanTypeFromToken(tokenVal) {
+      if (!tokenVal) return null;
+      const payload = parseIdTokenPayload(tokenVal);
+      if (payload && typeof payload === 'object') {
+        const auth = payload['https://api.openai.com/auth'];
+        const plan = (auth && typeof auth === 'object' ? (auth.chatgpt_plan_type || auth.chatgptPlanType) : null) ||
+          payload.chatgpt_plan_type || payload.chatgptPlanType;
+        if (typeof plan === 'string' && plan.trim()) {
+          return plan.trim();
+        }
+      }
+      return null;
+    }
+
+    const candidates = [
+      file.id_token,
+      file.idToken,
+      file._raw?.id_token,
+      file._raw?.idToken,
+    ];
+    for (const c of candidates) {
+      const plan = getPlanTypeFromToken(c);
+      if (plan) return plan;
+    }
+    return null;
+  }
+
   function extractCodexChatgptAccountId(file) {
     if (!file) return null;
 
@@ -2493,7 +2525,7 @@ body {
         'Accept': 'application/json',
         'OpenAI-Beta': 'codex-1',
         'Originator': 'Codex Desktop',
-        'User-Agent': 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)',
+        'User-Agent': 'codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)',
       };
       const accountId = extractCodexChatgptAccountId(file);
       if (accountId) {
@@ -2548,7 +2580,7 @@ body {
           if (!resetCredits && (bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits)) {
             resetCredits = parseCodexResetCredits(bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits);
           }
-          const rawPlan = bodyObj.plan_type || bodyObj.planType || 'plus';
+          const rawPlan = bodyObj.plan_type || bodyObj.planType || extractCodexPlanType(file) || 'plus';
           const planDisplay = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
           const rows = buildCodexQuotaRows(bodyObj);
 
@@ -2567,9 +2599,11 @@ body {
       }
     } catch (e) {}
 
+    const fallbackPlan = extractCodexPlanType(file) || 'plus';
+    const fallbackDisplay = fallbackPlan.charAt(0).toUpperCase() + fallbackPlan.slice(1);
     quotaStore[file.name] = {
       loading: false,
-      plan: 'Plus',
+      plan: fallbackDisplay,
       resetCredits: resetCredits,
       groups: [],
       error: 'Upstream quota request failed',
@@ -2613,7 +2647,7 @@ body {
       'Accept': 'application/json',
       'OpenAI-Beta': 'codex-1',
       'Originator': 'Codex Desktop',
-      'User-Agent': 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)',
+      'User-Agent': 'codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)',
     };
     const accountId = extractCodexChatgptAccountId(file);
     if (accountId) {
