@@ -27,6 +27,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     fetchClaudeQuota,
     fetchCodexQuota,
     parseIdTokenPayload,
+    extractCodexPlanType,
     extractCodexChatgptAccountId,
     parseCodexResetCredits,
     parseClaudePlan,
@@ -158,6 +159,29 @@ test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
   assert.equal(dashboard.parseIdTokenPayload(null), null);
 });
 
+test('Scope 1: extractCodexPlanType extracts plan_type from file and JWT id_token', () => {
+  const dashboard = loadDashboard();
+
+  // 1. Extracts plan_type from file.plan_type
+  assert.equal(dashboard.extractCodexPlanType({ plan_type: 'team' }), 'team');
+  assert.equal(dashboard.extractCodexPlanType({ _raw: { plan_type: 'enterprise' } }), 'enterprise');
+
+  // 2. Extracts chatgpt_plan_type from JWT id_token
+  const jwtAuth = createJwt({
+    'https://api.openai.com/auth': { chatgpt_plan_type: 'pro' },
+  });
+  assert.equal(dashboard.extractCodexPlanType({ id_token: jwtAuth }), 'pro');
+
+  const jwtTopLevel = createJwt({
+    chatgpt_plan_type: 'business',
+  });
+  assert.equal(dashboard.extractCodexPlanType({ idToken: jwtTopLevel }), 'business');
+
+  // 3. Returns null when absent
+  assert.equal(dashboard.extractCodexPlanType({}), null);
+  assert.equal(dashboard.extractCodexPlanType(null), null);
+});
+
 test('Scope 1: extractCodexChatgptAccountId handles candidates and fallback', () => {
   const dashboard = loadDashboard();
   const jwt = createJwt({
@@ -250,7 +274,7 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
     assert.equal(call.payload.header['Authorization'], 'Bearer $TOKEN$');
     assert.equal(call.payload.header['OpenAI-Beta'], 'codex-1');
     assert.equal(call.payload.header['Originator'], 'Codex Desktop');
-    assert.equal(call.payload.header['User-Agent'], 'codex-tui/0.153.3 (Mac OS 26.5.1; arm64) iTerm.app/3.6.11 (codex-tui; 0.153.3)');
+    assert.equal(call.payload.header['User-Agent'], 'codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)');
     assert.equal(call.payload.header['Chatgpt-Account-Id'], 'acc-codex-999');
   }
 
