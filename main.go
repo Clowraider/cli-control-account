@@ -46,9 +46,10 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"unsafe"
@@ -114,11 +115,28 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_a
 }
 
 //export cliproxyPluginCall
-func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) C.int {
+func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) (rc C.int) {
 	if response != nil {
 		response.ptr = nil
 		response.len = 0
 	}
+	// The plugin runs its own Go runtime inside the host process, so an
+	// unrecovered panic here kills CLIProxyAPI. Never let one cross the ABI.
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		// Drop any buffer already handed out so the host receives exactly one.
+		if response != nil && response.ptr != nil {
+			C.free(response.ptr)
+			response.ptr = nil
+			response.len = 0
+		}
+		writeResponse(response, errorEnvelope("plugin_panic", fmt.Sprintf("recovered from panic: %v", r)))
+		rc = 1
+	}()
+
 	if method == nil {
 		writeResponse(response, errorEnvelope("invalid_method", "method is required"))
 		return 1
@@ -209,10 +227,18 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 	}
 }
 
+// egoAPIEndpointPattern is the allowlist for the client controlled ego API
+// endpoint. The resolved value is concatenated into the request target of
+// httptest.NewRequest, which panics by design on anything it cannot parse, so
+// only the flat endpoint names served by ego.Handler are accepted.
+var egoAPIEndpointPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
 func handleManagementHTTP(request []byte) ([]byte, error) {
 	var req managementRequestPayload
 	if len(request) > 0 {
-		_ = json.Unmarshal(request, &req)
+		if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
+			return errorEnvelope("invalid_request", "invalid management request payload: "+errUnmarshal.Error()), nil
+		}
 	}
 
 	// 1. Ego REST API routing (via ?api=... query parameter on /ego, or legacy /ego/api path)
@@ -226,15 +252,24 @@ func handleManagementHTTP(request []byte) ([]byte, error) {
 	}
 
 	if apiEndpoint != "" {
-		if unescaped, err := url.QueryUnescape(apiEndpoint); err == nil {
-			apiEndpoint = unescaped
-		}
-		egoHandler := ego.NewHandler(ego.GetWorker())
+		// The host already percent-decoded the query, so no further unescaping.
 		cleanPath := strings.TrimPrefix(apiEndpoint, "/")
 		if idx := strings.Index(cleanPath, "?"); idx != -1 {
 			cleanPath = cleanPath[:idx]
 		}
+		if !egoAPIEndpointPattern.MatchString(cleanPath) {
+			resp := managementResponsePayload{
+				StatusCode: http.StatusNotFound,
+				Headers: map[string][]string{
+					"Content-Type": {"application/json; charset=utf-8"},
+				},
+				Body: base64.StdEncoding.EncodeToString([]byte(`{"error":"not_found","message":"resource not found"}`)),
+			}
+			raw, _ := json.Marshal(resp)
+			return okEnvelope(raw), nil
+		}
 
+		egoHandler := ego.NewHandler(ego.GetWorker())
 		httpReq := httptest.NewRequest(req.Method, "/ego/api/"+cleanPath, bytes.NewReader(req.Body))
 		for k, vv := range req.Headers {
 			for _, v := range vv {

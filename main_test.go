@@ -142,11 +142,13 @@ func TestHandlePluginMethod(t *testing.T) {
 		t.Fatalf("expected 200 from Ego API via query param, got %d", respEgoQuery.StatusCode)
 	}
 
-	// 7. Test management.handle for Ego API with encoded URI ?api=%2Fpricing
+	// 7. Test management.handle for Ego API with encoded URI ?api=%2Fpricing.
+	// The host decodes the query string before handing it to the plugin, so the
+	// wire value %2Fpricing arrives here already decoded as "/pricing".
 	reqEgoEncoded := managementRequestPayload{
 		Method: "GET",
 		Path:   "/v0/resource/plugins/control-account-linux-amd64/ego",
-		Query:  map[string][]string{"api": {"%2Fpricing"}},
+		Query:  map[string][]string{"api": {"/pricing"}},
 	}
 	reqEgoEncodedJSON, err := json.Marshal(reqEgoEncoded)
 	if err != nil {
@@ -176,5 +178,74 @@ func TestHandlePluginMethod(t *testing.T) {
 	}
 	if envUnknown.OK {
 		t.Errorf("expected OK=false for unknown method")
+	}
+}
+
+// TestHandleManagementHTTP_RejectsMalformedEgoAPIEndpoint covers the unauthenticated
+// ?api= route: the value is fully client controlled and used to build a
+// httptest.NewRequest target, which panics by design on malformed input. A panic
+// here would take the whole CLIProxyAPI process down, so every one of these must
+// come back as a plain 404 instead.
+func TestHandleManagementHTTP_RejectsMalformedEgoAPIEndpoint(t *testing.T) {
+	// Values are what the host hands over after decoding the query string.
+	cases := []struct {
+		name     string
+		wire     string
+		endpoint string
+	}{
+		{name: "space", wire: "?api=a+b", endpoint: "a b"},
+		{name: "stray percent", wire: "?api=%25", endpoint: "%"},
+		{name: "null byte", wire: "?api=%00x", endpoint: "\x00x"},
+		{name: "newline", wire: "?api=%0Ax", endpoint: "\nx"},
+		{name: "traversal", wire: "?api=../../etc/passwd", endpoint: "../../etc/passwd"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqPayload := managementRequestPayload{
+				Method: "GET",
+				Path:   "/v0/resource/plugins/control-account-linux-amd64/ego",
+				Query:  map[string][]string{"api": {tc.endpoint}},
+			}
+			reqJSON, err := json.Marshal(reqPayload)
+			if err != nil {
+				t.Fatalf("failed to marshal request: %v", err)
+			}
+
+			raw, err := handlePluginMethod("management.handle", reqJSON)
+			if err != nil {
+				t.Fatalf("management.handle for %s failed: %v", tc.wire, err)
+			}
+			var env envelope
+			if err := json.Unmarshal(raw, &env); err != nil || !env.OK {
+				t.Fatalf("expected OK envelope for %s, got: %s", tc.wire, string(raw))
+			}
+			var resp managementResponsePayload
+			if err := json.Unmarshal(env.Result, &resp); err != nil {
+				t.Fatalf("failed to unmarshal management response payload: %v", err)
+			}
+			if resp.StatusCode != 404 {
+				t.Errorf("expected status code 404 for %s, got %d", tc.wire, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestHandleManagementHTTP_InvalidPayload ensures a corrupt request payload is
+// reported instead of silently falling through to the dashboard asset.
+func TestHandleManagementHTTP_InvalidPayload(t *testing.T) {
+	raw, err := handlePluginMethod("management.handle", []byte("{not json"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env envelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("failed to unmarshal envelope: %v", err)
+	}
+	if env.OK {
+		t.Fatalf("expected OK=false for malformed payload, got: %s", string(raw))
+	}
+	if env.Error == nil || env.Error.Code != "invalid_request" {
+		t.Errorf("expected error code 'invalid_request', got: %s", string(raw))
 	}
 }
