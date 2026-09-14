@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and publish (e.g. v0.6.0-rc.2)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -60,7 +65,16 @@ jobs:
           CC: ${{ matrix.cross_cc || 'gcc' }}
         run: |
           mkdir -p dist
-          go build -buildmode=c-shared -ldflags="-s -w" -o dist/${{ matrix.name }} main.go
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG_NAME="${{ inputs.tag }}"
+          fi
+          VERSION_VALUE="${TAG_NAME#v}"
+          LDFLAGS="-s -w"
+          if [[ -n "$VERSION_VALUE" ]]; then
+            LDFLAGS="$LDFLAGS -X control-account/internal/version.Version=${VERSION_VALUE}"
+          fi
+          go build -buildmode=c-shared -ldflags="$LDFLAGS" -o dist/${{ matrix.name }} main.go
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -94,7 +108,12 @@ jobs:
         run: |
           TAG_NAME="${GITHUB_REF_NAME}"
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            TAG_NAME="v0.2.0"
+            TAG_NAME="${{ inputs.tag }}"
+          fi
+          
+          if [[ -z "$TAG_NAME" || ! "$TAG_NAME" =~ ^v[0-9]+ ]]; then
+            echo "Error: Invalid or missing tag name '$TAG_NAME'. Expected format 'vX.Y.Z' or 'vX.Y.Z-rc.N'."
+            exit 1
           fi
           
           # Check if release exists, create if not
