@@ -155,6 +155,7 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 	if cached == 0 {
 		cached = rec.Detail.CacheReadTokens
 	}
+	cacheCreation := rec.Detail.CacheCreationTokens
 	total := rec.Detail.TotalTokens
 	if total == 0 {
 		total = prompt + completion + reasoning
@@ -178,17 +179,18 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 	}
 
 	return EgoEvent{
-		Timestamp:        ts,
-		Provider:         provider,
-		Model:            model,
-		Account:          account,
-		PromptTokens:     prompt,
-		CompletionTokens: completion,
-		ReasoningTokens:  reasoning,
-		CachedTokens:     cached,
-		TotalTokens:      total,
-		LatencyMs:        latencyMs,
-		Status:           status,
+		Timestamp:           ts,
+		Provider:            provider,
+		Model:               model,
+		Account:             account,
+		PromptTokens:        prompt,
+		CompletionTokens:    completion,
+		ReasoningTokens:     reasoning,
+		CachedTokens:        cached,
+		CacheCreationTokens: cacheCreation,
+		TotalTokens:         total,
+		LatencyMs:           latencyMs,
+		Status:              status,
 	}
 }
 

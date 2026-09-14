@@ -132,30 +132,34 @@ func stringsTrimDash(s string) string {
 }
 
 func TestPricing_CalculateCostFormula(t *testing.T) {
-	// Formula: (prompt - cached) * in_rate + cached * cache_rate + (completion + reasoning) * out_rate
 	pricing := ModelPricing{
-		Model:                   "test-model",
-		InputCostPerToken:       0.000003,  // $3 per 1M tokens
-		OutputCostPerToken:      0.000015,  // $15 per 1M tokens
-		CacheReadInputTokenCost: 0.0000003, // $0.30 per 1M tokens
+		Model:                        "test-model",
+		InputCostPerToken:            0.000003,   // $3 per 1M tokens
+		OutputCostPerToken:           0.000015,   // $15 per 1M tokens
+		CacheReadInputTokenCost:      0.0000003,  // $0.30 per 1M tokens
+		CacheCreationInputTokenCost: 0.00000375, // $3.75 per 1M tokens (1.25x)
 	}
 
 	tests := []struct {
-		name             string
-		promptTokens     int64
-		completionTokens int64
-		reasoningTokens  int64
-		cachedTokens     int64
-		expectedTotal    float64
-		expectedPrompt   float64
-		expectedOutput   float64
+		name                string
+		provider            string
+		promptTokens        int64
+		completionTokens    int64
+		reasoningTokens     int64
+		cacheReadTokens     int64
+		cacheCreationTokens int64
+		expectedTotal       float64
+		expectedPrompt      float64
+		expectedOutput      float64
 	}{
 		{
-			name:             "pure uncached prompt and completion",
-			promptTokens:     1000,
-			completionTokens: 500,
-			reasoningTokens:  0,
-			cachedTokens:     0,
+			name:                "openai subset: pure uncached prompt and completion",
+			provider:            "openai",
+			promptTokens:        1000,
+			completionTokens:    500,
+			reasoningTokens:     0,
+			cacheReadTokens:     0,
+			cacheCreationTokens: 0,
 			// prompt: 1000 * 0.000003 = 0.003
 			// output: 500 * 0.000015 = 0.0075
 			// total: 0.0105
@@ -164,26 +168,65 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 			expectedTotal:  0.0105,
 		},
 		{
-			name:             "with cached tokens and reasoning",
-			promptTokens:     1000,
-			completionTokens: 500,
-			reasoningTokens:  200,
-			cachedTokens:     400,
+			name:                "openai subset: with cached tokens and reasoning",
+			provider:            "openai",
+			promptTokens:        1000,
+			completionTokens:    500,
+			reasoningTokens:     200,
+			cacheReadTokens:     400,
+			cacheCreationTokens: 0,
 			// uncached: 600 * 0.000003 = 0.0018
 			// cached:   400 * 0.0000003 = 0.00012
 			// promptCost = 0.00192
-			// output: 500 * 0.000015 = 0.0075 (completion tokens subsume reasoning tokens)
+			// output: 500 * 0.000015 = 0.0075 (completion tokens subsume reasoning tokens in subset)
 			// totalCost = 0.00942
 			expectedPrompt: 0.00192,
 			expectedOutput: 0.0075,
 			expectedTotal:  0.00942,
 		},
 		{
-			name:             "cached tokens exceed prompt tokens clamp",
-			promptTokens:     100,
-			completionTokens: 50,
-			reasoningTokens:  0,
-			cachedTokens:     150, // exceeds promptTokens, uncached = 0
+			name:                "claude independent: input is uncached count, cache read and creation are additive",
+			provider:            "claude",
+			promptTokens:        1000, // already uncached
+			completionTokens:    500,
+			reasoningTokens:     200, // additive to completion
+			cacheReadTokens:     50000,
+			cacheCreationTokens: 1000,
+			// uncached: 1000 * 0.000003 = 0.003
+			// cacheRead: 50000 * 0.0000003 = 0.015
+			// cacheCreation: 1000 * 0.00000375 = 0.00375
+			// promptCost = 0.02175
+			// output: (500 + 200) * 0.000015 = 0.0105
+			// totalCost = 0.03225
+			expectedPrompt: 0.02175,
+			expectedOutput: 0.0105,
+			expectedTotal:  0.03225,
+		},
+		{
+			name:                "gemini separateReasoning: prompt includes cache, reasoning is additive",
+			provider:            "gemini",
+			promptTokens:        1000, // includes cache
+			completionTokens:    500,
+			reasoningTokens:     300, // additive to completion
+			cacheReadTokens:     400,
+			cacheCreationTokens: 0,
+			// uncached: (1000 - 400) * 0.000003 = 0.0018
+			// cacheRead: 400 * 0.0000003 = 0.00012
+			// promptCost = 0.00192
+			// output: (500 + 300) * 0.000015 = 0.012
+			// totalCost = 0.01392
+			expectedPrompt: 0.00192,
+			expectedOutput: 0.012,
+			expectedTotal:  0.01392,
+		},
+		{
+			name:                "cached tokens exceed prompt tokens clamp in subset",
+			provider:            "openai",
+			promptTokens:        100,
+			completionTokens:    50,
+			reasoningTokens:     0,
+			cacheReadTokens:     150, // exceeds promptTokens, uncached = 0
+			cacheCreationTokens: 0,
 			// prompt: 0 * 0.000003 + 150 * 0.0000003 = 0.000045
 			// output: 50 * 0.000015 = 0.00075
 			// total: 0.000795
@@ -195,7 +238,7 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tot, inC, outC := CalculateTokenCost(pricing, tt.promptTokens, tt.completionTokens, tt.reasoningTokens, tt.cachedTokens)
+			tot, inC, outC := CalculateTokenCost(pricing, tt.provider, tt.promptTokens, tt.completionTokens, tt.reasoningTokens, tt.cacheReadTokens, tt.cacheCreationTokens)
 			const tolerance = 1e-9
 			if diff := tot - tt.expectedTotal; diff > tolerance || diff < -tolerance {
 				t.Errorf("expected total %f, got %f (diff: %e)", tt.expectedTotal, tot, diff)
