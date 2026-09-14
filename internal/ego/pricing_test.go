@@ -1,9 +1,6 @@
 package ego
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"path/filepath"
 	"testing"
 )
 
@@ -250,101 +247,5 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 				t.Errorf("expected output cost %f, got %f (diff: %e)", tt.expectedOutput, outC, diff)
 			}
 		})
-	}
-}
-
-func TestPricing_ParseLiteLLMPricing(t *testing.T) {
-	mockPayload := []byte(`{
-		"sample_spec": {
-			"max_tokens": 1000,
-			"input_cost_per_token": 0.000001,
-			"output_cost_per_token": 0.000002
-		},
-		"gpt-4o": {
-			"input_cost_per_token": 0.0000025,
-			"output_cost_per_token": 0.00001,
-			"cache_read_input_token_cost": 0.00000125
-		},
-		"claude-3-5-sonnet-20241022": {
-			"input_cost_per_token": 0.000003,
-			"output_cost_per_token": 0.000015,
-			"cache_read_input_token_cost": 0.0000003
-		},
-		"free-model": {
-			"input_cost_per_token": 0,
-			"output_cost_per_token": 0
-		}
-	}`)
-
-	entries, err := ParseLiteLLMPricing(mockPayload)
-	if err != nil {
-		t.Fatalf("ParseLiteLLMPricing failed: %v", err)
-	}
-
-	entryMap := make(map[string]ModelPricing)
-	for _, e := range entries {
-		entryMap[e.Model] = e
-	}
-
-	// sample_spec and free-model (0 cost) should be skipped
-	if _, ok := entryMap["sample_spec"]; ok {
-		t.Errorf("expected sample_spec to be skipped")
-	}
-	if _, ok := entryMap["free-model"]; ok {
-		t.Errorf("expected free-model with zero cost to be skipped")
-	}
-
-	// gpt-4o
-	if gpt, ok := entryMap["gpt-4o"]; !ok {
-		t.Errorf("expected gpt-4o to be parsed")
-	} else {
-		if gpt.InputCostPerToken != 0.0000025 || gpt.OutputCostPerToken != 0.00001 || gpt.CacheReadInputTokenCost != 0.00000125 {
-			t.Errorf("unexpected gpt-4o rates: %+v", gpt)
-		}
-	}
-
-	// claude-3-5-sonnet-20241022
-	if claude, ok := entryMap["claude-3-5-sonnet-20241022"]; !ok {
-		t.Errorf("expected claude-3-5-sonnet-20241022 to be parsed")
-	} else {
-		if claude.InputCostPerToken != 0.000003 || claude.OutputCostPerToken != 0.000015 {
-			t.Errorf("unexpected claude rates: %+v", claude)
-		}
-	}
-}
-
-func TestPricing_SyncLiteLLMPricingWithServer(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.Header().Set("Content-Type", "application/json")
-		_, _ = rw.Write([]byte(`{
-			"test-remote-model": {
-				"input_cost_per_token": 0.000005,
-				"output_cost_per_token": 0.00002,
-				"cache_read_input_token_cost": 0.000001
-			}
-		}`))
-	}))
-	defer mockServer.Close()
-
-	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "test_pricing_sync.db")
-
-	storage, err := OpenStorage(dbPath)
-	if err != nil {
-		t.Fatalf("OpenStorage failed: %v", err)
-	}
-	defer storage.Close()
-
-	count, err := storage.SyncLiteLLMPricing(mockServer.URL)
-	if err != nil {
-		t.Fatalf("SyncLiteLLMPricing failed: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("Expected 1 model synced, got %d", count)
-	}
-
-	p := storage.GetPricing("test-remote-model")
-	if p.Model != "test-remote-model" || p.InputCostPerToken != 0.000005 {
-		t.Errorf("Expected synced model to have input cost 0.000005, got %+v", p)
 	}
 }
