@@ -208,6 +208,18 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 					"Description": "Developer Ego analytics: token burn & latency metrics",
 				},
 			},
+			"routes": []map[string]any{
+				{"Method": "GET", "Path": "/ego/stats"},
+				{"Method": "GET", "Path": "/ego/timeline"},
+				{"Method": "GET", "Path": "/ego/providers"},
+				{"Method": "GET", "Path": "/ego/models"},
+				{"Method": "GET", "Path": "/ego/accounts"},
+				{"Method": "GET", "Path": "/ego/settings"},
+				{"Method": "POST", "Path": "/ego/settings"},
+				{"Method": "POST", "Path": "/ego/prune"},
+				{"Method": "POST", "Path": "/ego/reset"},
+				{"Method": "GET", "Path": "/ego/pricing"},
+			},
 		}
 		raw, err := json.Marshal(regResponse)
 		if err != nil {
@@ -241,19 +253,10 @@ func handleManagementHTTP(request []byte) ([]byte, error) {
 		}
 	}
 
-	// 1. Ego REST API routing (via ?api=... query parameter on /ego, or legacy /ego/api path)
-	var apiEndpoint string
-	if len(req.Query) > 0 && len(req.Query["api"]) > 0 && req.Query["api"][0] != "" {
-		apiEndpoint = req.Query["api"][0]
-	} else if strings.Contains(req.Path, "/ego/api") {
-		if idx := strings.Index(req.Path, "/ego/api"); idx != -1 {
-			apiEndpoint = req.Path[idx+len("/ego/api"):]
-		}
-	}
-
-	if apiEndpoint != "" {
-		// The host already percent-decoded the query, so no further unescaping.
-		cleanPath := strings.TrimPrefix(apiEndpoint, "/")
+	// 1. Authenticated Ego REST API routing under /v0/management/ego
+	if strings.HasPrefix(req.Path, "/v0/management/ego") {
+		cleanPath := strings.TrimPrefix(req.Path, "/v0/management/ego")
+		cleanPath = strings.TrimPrefix(cleanPath, "/")
 		if idx := strings.Index(cleanPath, "?"); idx != -1 {
 			cleanPath = cleanPath[:idx]
 		}
@@ -263,7 +266,7 @@ func handleManagementHTTP(request []byte) ([]byte, error) {
 				Headers: map[string][]string{
 					"Content-Type": {"application/json; charset=utf-8"},
 				},
-				Body: base64.StdEncoding.EncodeToString([]byte(`{"error":"not_found","message":"resource not found"}`)),
+				Body: base64.StdEncoding.EncodeToString([]byte(`{"error":"not_found","message":"endpoint not found"}`)),
 			}
 			raw, _ := json.Marshal(resp)
 			return okEnvelope(raw), nil
@@ -279,9 +282,6 @@ func handleManagementHTTP(request []byte) ([]byte, error) {
 		if len(req.Query) > 0 {
 			q := httpReq.URL.Query()
 			for k, vv := range req.Query {
-				if k == "api" {
-					continue
-				}
 				for _, v := range vv {
 					q.Add(k, v)
 				}

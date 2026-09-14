@@ -165,4 +165,53 @@ func TestHandler_Endpoints(t *testing.T) {
 	if total, ok := pricingResp["total"].(float64); !ok || total == 0 {
 		t.Errorf("Expected positive pricing total, got %v", pricingResp["total"])
 	}
+
+	// 6. Method restrictions on endpoints
+	// 6a. GET /reset -> 405
+	req = httptest.NewRequest(http.MethodGet, "/ego/api/reset", nil)
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405 for GET /reset, got %d", rw.Code)
+	}
+
+	// 6b. GET /prune -> 405
+	req = httptest.NewRequest(http.MethodGet, "/ego/api/prune", nil)
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405 for GET /prune, got %d", rw.Code)
+	}
+
+	// 6c. POST /prune -> 200
+	req = httptest.NewRequest(http.MethodPost, "/ego/api/prune", bytes.NewBufferString(`{"days": 30}`))
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusOK {
+		t.Errorf("Expected 200 for POST /prune, got %d", rw.Code)
+	}
+
+	// 6d. DELETE /settings -> 405
+	req = httptest.NewRequest(http.MethodDelete, "/ego/api/settings", nil)
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405 for DELETE /settings, got %d", rw.Code)
+	}
+
+	// 6e. POST /stats -> 405
+	req = httptest.NewRequest(http.MethodPost, "/ego/api/stats", nil)
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405 for POST /stats, got %d", rw.Code)
+	}
+
+	// 6f. GET /unknown -> 404
+	req = httptest.NewRequest(http.MethodGet, "/ego/api/unknown", nil)
+	rw = httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusNotFound {
+		t.Errorf("Expected 404 for GET /unknown, got %d", rw.Code)
+	}
 }

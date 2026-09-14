@@ -4490,13 +4490,8 @@ body {
   }
 
   async function egoApiFetch(endpoint, options = {}) {
-    const basePath = getPluginBaseResourcePath();
-    const [subpath, queryString] = endpoint.split('?');
-    let fullUrl = `${basePath}/ego?api=${subpath}`;
-    if (queryString) {
-      fullUrl += `&${queryString}`;
-    }
-    return apiFetch(fullUrl, options);
+    let path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return apiFetch(`/v0/management/ego${path}`, options);
   }
 
   function formatCompactTokens(num) {
@@ -5068,10 +5063,19 @@ body {
       toggle.addEventListener('change', async () => {
         const enabled = toggle.checked;
         try {
-          await egoApiFetch(`/settings?enabled=${enabled}`);
-          showToast(`Ingestion ${enabled ? 'habilitada' : 'pausada'}`, 'info');
+          const res = await egoApiFetch('/settings', {
+            method: 'POST',
+            body: JSON.stringify({ enabled })
+          });
+          if (!res.ok) {
+            toggle.checked = !enabled;
+            showToast('Error al actualizar estado de ingestion', true);
+            return;
+          }
+          showToast(`Ingestion ${enabled ? 'habilitada' : 'pausada'}`, false);
         } catch (e) {
-          showToast('Error al actualizar estado de ingestion', 'error');
+          toggle.checked = !enabled;
+          showToast('Error al actualizar estado de ingestion', true);
         }
       });
     }
@@ -5085,12 +5089,19 @@ body {
         if (!confirm(`¿Estás seguro de purgar registros de más de ${days} días?`)) return;
 
         try {
-          const res = await egoApiFetch(`/prune?days=${days}`);
+          const res = await egoApiFetch('/prune', {
+            method: 'POST',
+            body: JSON.stringify({ days })
+          });
+          if (!res.ok) {
+            showToast('Error purgando registros', true);
+            return;
+          }
           const data = await res.json();
-          showToast(`Se purgaron ${data.rows_deleted || 0} registros`, 'info');
+          showToast(`Se purgaron ${data.rows_deleted || 0} registros`, false);
           loadEgoOverview();
         } catch (e) {
-          showToast('Error purgando registros', 'error');
+          showToast('Error purgando registros', true);
         }
       });
     }
@@ -5101,11 +5112,17 @@ body {
       btnReset.addEventListener('click', async () => {
         if (!confirm('⚠️ ¡PELIGRO! ¿Deseas vaciar por completo todas las estadísticas guardadas? Esta acción no se puede deshacer.')) return;
         try {
-          await egoApiFetch('/reset');
-          showToast('Base de datos reiniciada con éxito', 'info');
+          const res = await egoApiFetch('/reset', {
+            method: 'POST'
+          });
+          if (!res.ok) {
+            showToast('Error reiniciando base de datos', true);
+            return;
+          }
+          showToast('Base de datos reiniciada con éxito', false);
           loadEgoOverview();
         } catch (e) {
-          showToast('Error reiniciando base de datos', 'error');
+          showToast('Error reiniciando base de datos', true);
         }
       });
     }

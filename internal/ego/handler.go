@@ -28,27 +28,62 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 	// Match subpath after /ego/api
 	switch {
-	case req.Method == http.MethodGet && endsWith(path, "/stats"):
-		h.handleStats(rw, req)
-	case req.Method == http.MethodGet && endsWith(path, "/timeline"):
-		h.handleTimeline(rw, req)
-	case req.Method == http.MethodGet && endsWith(path, "/providers"):
-		h.handleProviders(rw, req)
-	case req.Method == http.MethodGet && endsWith(path, "/models"):
-		h.handleModels(rw, req)
-	case req.Method == http.MethodGet && endsWith(path, "/accounts"):
-		h.handleAccounts(rw, req)
-	case (req.Method == http.MethodGet || req.Method == http.MethodPost) && endsWith(path, "/settings"):
-		if req.Method == http.MethodPost || req.URL.Query().Get("enabled") != "" {
-			h.handlePostSettings(rw, req)
-		} else {
-			h.handleGetSettings(rw, req)
+	case endsWith(path, "/stats"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
 		}
-	case (req.Method == http.MethodGet || req.Method == http.MethodPost) && endsWith(path, "/prune"):
+		h.handleStats(rw, req)
+	case endsWith(path, "/timeline"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
+		}
+		h.handleTimeline(rw, req)
+	case endsWith(path, "/providers"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
+		}
+		h.handleProviders(rw, req)
+	case endsWith(path, "/models"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
+		}
+		h.handleModels(rw, req)
+	case endsWith(path, "/accounts"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
+		}
+		h.handleAccounts(rw, req)
+	case endsWith(path, "/settings"):
+		switch req.Method {
+		case http.MethodGet:
+			h.handleGetSettings(rw, req)
+		case http.MethodPost:
+			h.handlePostSettings(rw, req)
+		default:
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	case endsWith(path, "/prune"):
+		if req.Method != http.MethodPost {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use POST")
+			return
+		}
 		h.handlePrune(rw, req)
-	case (req.Method == http.MethodGet || req.Method == http.MethodPost) && endsWith(path, "/reset"):
+	case endsWith(path, "/reset"):
+		if req.Method != http.MethodPost {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use POST")
+			return
+		}
 		h.handleReset(rw, req)
-	case req.Method == http.MethodGet && endsWith(path, "/pricing"):
+	case endsWith(path, "/pricing"):
+		if req.Method != http.MethodGet {
+			h.writeError(rw, http.StatusMethodNotAllowed, "method not allowed, use GET")
+			return
+		}
 		h.handleGetPricing(rw, req)
 	default:
 		h.writeError(rw, http.StatusNotFound, "endpoint not found")
