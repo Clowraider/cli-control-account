@@ -1023,6 +1023,10 @@ body {
   background: var(--meter-critical);
 }
 
+.fill.no-data {
+  background: rgba(140, 149, 159, 0.3);
+}
+
 /* Card Action Footer */
 .card-footer {
   display: flex;
@@ -2201,6 +2205,21 @@ body {
   const modalSaveSpinner = document.getElementById('modal-save-spinner');
   const modalSaveText = document.getElementById('modal-save-text');
 
+  function updateCountdownTickers() {
+    const rows = document.querySelectorAll('.meter-row[data-reset-ms]');
+    rows.forEach(rowEl => {
+      const rawMs = rowEl.getAttribute('data-reset-ms');
+      if (!rawMs) return;
+      const resetMs = Number(rawMs);
+      if (!resetMs || isNaN(resetMs)) return;
+      const resetSpan = rowEl.querySelector('.meta-reset');
+      if (resetSpan) {
+        const info = formatResetInfo(resetMs, null);
+        resetSpan.textContent = info.label;
+      }
+    });
+  }
+
   function init() {
     setupTabListeners();
     setupSortListener();
@@ -2211,6 +2230,8 @@ body {
       btnCheck.addEventListener('click', checkForPluginUpdates);
     }
     loadAuthFiles();
+    setInterval(refreshAll, 180000);
+    setInterval(updateCountdownTickers, 30000);
   }
 
   let updateResetTimer = null;
@@ -2419,7 +2440,28 @@ body {
     if (key) {
       headers['Authorization'] = `Bearer ${key}`;
     }
-    return fetch(endpoint, { ...options, headers });
+
+    const controller = new AbortController();
+    const timeoutMs = options.timeout ?? 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const onExternalAbort = () => controller.abort();
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
+
+    try {
+      return await fetch(endpoint, { ...options, headers, signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onExternalAbort);
+      }
+    }
   }
 
   async function loadAuthFiles() {
@@ -2601,27 +2643,35 @@ body {
     quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
     render();
 
-    const provider = resolveProvider(file);
-    const authIndex = file.auth_index ?? file.authIndex ?? file.name;
+    try {
+      const provider = resolveProvider(file);
+      const authIndex = file.auth_index ?? file.authIndex ?? file.name;
 
-    if (provider === 'antigravity') {
-      await fetchAntigravityQuota(file, authIndex);
-    } else if (provider === 'claude') {
-      await fetchClaudeQuota(file, authIndex);
-    } else if (provider === 'codex') {
-      await fetchCodexQuota(file, authIndex);
-    } else if (provider === 'kimi') {
-      // Live quota via Management api-call → GET https://api.kimi.com/coding/v1/usages
-      await fetchKimiQuota(file, authIndex);
-    } else if (provider === 'xai') {
-      // Live quota via Management api-call → GET cli-chat-proxy.grok.com/v1/billing
-      await fetchXaiQuota(file, authIndex);
-    } else {
-      quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
+      if (provider === 'antigravity') {
+        await fetchAntigravityQuota(file, authIndex);
+      } else if (provider === 'claude') {
+        await fetchClaudeQuota(file, authIndex);
+      } else if (provider === 'codex') {
+        await fetchCodexQuota(file, authIndex);
+      } else if (provider === 'kimi') {
+        // Live quota via Management api-call → GET https://api.kimi.com/coding/v1/usages
+        await fetchKimiQuota(file, authIndex);
+      } else if (provider === 'xai') {
+        // Live quota via Management api-call → GET cli-chat-proxy.grok.com/v1/billing
+        await fetchXaiQuota(file, authIndex);
+      } else {
+        quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
+      }
+    } catch (err) {
+      quotaStore[fileName] = {
+        loading: false,
+        groups: [],
+        error: err?.message || 'Failed to fetch live quota from upstream',
+      };
+    } finally {
+      render();
+      updateLoadedCount();
     }
-
-    render();
-    updateLoadedCount();
   }
 
   async function fetchAntigravityQuota(file, authIndex) {
@@ -2722,13 +2772,13 @@ body {
       const rawBuckets = g.buckets || g.limits || [];
       const rows = rawBuckets.map(b => {
         const remFrac = b.remainingFraction !== undefined ? b.remainingFraction : b.remaining_fraction;
-        const fraction = remFrac !== undefined && remFrac !== null ? Number(remFrac) : 1;
-        const percent = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+        const fraction = remFrac !== undefined && remFrac !== null && !isNaN(Number(remFrac)) ? Number(remFrac) : null;
+        const percent = fraction !== null ? Math.max(0, Math.min(100, Math.round(fraction * 100))) : null;
         const resetTime = b.resetTime || b.reset_time;
         const resetLabel = formatDuration(resetTime);
         const resetMs = resetTime ? new Date(resetTime).getTime() : null;
         
-        let label = b.displayName || b.display_name || b.label || b.window || 'Limit';
+        let label = String(b.displayName || b.display_name || b.label || b.window || 'Limit');
         const labelLower = label.toLowerCase();
         if (labelLower.includes('5') || labelLower.includes('five')) {
           label = 'Five Hour Limit';
@@ -2736,18 +2786,40 @@ body {
           label = 'Weekly Limit';
         }
 
-        const percentLabel = fraction === 1 ? 'Quota available' : `${percent}% remaining`;
+        let percentLabel;
+        let warning = false;
+        let finalResetLabel;
+        if (percent === null) {
+          percentLabel = 'No data';
+          warning = false;
+          finalResetLabel = resetLabel ? `Refreshes in ${resetLabel}` : 'No quota data';
+        } else {
+          percentLabel = fraction === 1 ? 'Quota available' : `${percent}% remaining`;
+          warning = percent < 20;
+          finalResetLabel = resetLabel ? `Refreshes in ${resetLabel}` : 'Refreshes in 5h 0m';
+        }
 
         return {
           label: label,
           window: b.window,
           percent: percent,
           percentLabel: percentLabel,
-          resetLabel: resetLabel ? `Refreshes in ${resetLabel}` : 'Refreshes in 5h 0m',
+          resetLabel: finalResetLabel,
           resetMs: resetMs,
-          warning: percent < 20,
+          warning: warning,
         };
       });
+
+      if (rows.length === 0) {
+        rows.push({
+          label: 'Limit',
+          percent: null,
+          percentLabel: 'No data',
+          resetLabel: 'No quota data',
+          resetMs: null,
+          warning: false,
+        });
+      }
 
       // Strict sort: 5h always 0 (top), Weekly always 1 (bottom)
       rows.sort((a, b) => getWindowOrder(a.label, a.window) - getWindowOrder(b.label, b.window));
@@ -2846,22 +2918,32 @@ body {
             const win = bodyObj[def.key];
             if (win && typeof win === 'object' && ('utilization' in win || 'resets_at' in win)) {
               let util = null;
-              if (typeof win.utilization === 'number') {
+              if (typeof win.utilization === 'number' && !isNaN(win.utilization)) {
                 util = win.utilization;
               } else if (typeof win.utilization === 'string') {
                 const parsed = parseFloat(win.utilization);
                 if (!isNaN(parsed)) util = parsed;
               }
-              const pct = util !== null ? Math.max(0, Math.min(100, Math.round((1 - util) * 100))) : 100;
               const resetInfo = formatResetInfo(win.resets_at, null);
-              const resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+              let pct = null;
+              let percentLabel = 'No data';
+              let resetLabel = resetInfo.ms ? resetInfo.label : 'No quota data';
+              let warning = false;
+
+              if (util !== null) {
+                pct = Math.max(0, Math.min(100, Math.round((1 - util) * 100)));
+                percentLabel = pct === 100 ? 'Quota available' : `${pct}% remaining`;
+                resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+                warning = pct < 20;
+              }
+
               rows.push({
                 label: def.label,
                 percent: pct,
-                percentLabel: pct === 100 ? 'Quota available' : `${pct}% remaining`,
+                percentLabel: percentLabel,
                 resetLabel: resetLabel,
                 resetMs: resetInfo.ms,
-                warning: pct < 20,
+                warning: warning,
               });
             }
           }
@@ -2873,10 +2955,10 @@ body {
               return kind === 'weekly_scoped' && (modelName === 'fable' || modelName === 'fable 5') && l?.percent !== undefined;
             });
             if (fableLimit) {
-              const utilPct = Number(fableLimit.percent);
+              const utilPct = fableLimit.percent !== undefined && fableLimit.percent !== null ? Number(fableLimit.percent) : NaN;
+              const resetInfo = formatResetInfo(fableLimit.resets_at, null);
               if (!isNaN(utilPct)) {
                 const pct = Math.max(0, Math.min(100, Math.round(100 - utilPct)));
-                const resetInfo = formatResetInfo(fableLimit.resets_at, null);
                 const resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
                 rows.push({
                   label: 'Fable Limit',
@@ -2886,25 +2968,44 @@ body {
                   resetMs: resetInfo.ms,
                   warning: pct < 20,
                 });
+              } else {
+                rows.push({
+                  label: 'Fable Limit',
+                  percent: null,
+                  percentLabel: 'No data',
+                  resetLabel: resetInfo.ms ? resetInfo.label : 'No quota data',
+                  resetMs: resetInfo.ms,
+                  warning: false,
+                });
               }
             }
           }
 
           if (bodyObj.extra_usage && bodyObj.extra_usage.is_enabled) {
-            const usedCredits = Number(bodyObj.extra_usage.used_credits) || 0;
-            const monthlyLimit = Number(bodyObj.extra_usage.monthly_limit) || 0;
-            const usedDollars = (usedCredits / 100).toFixed(2);
-            const limitDollars = (monthlyLimit / 100).toFixed(2);
-            const remainingPct = monthlyLimit > 0
-              ? Math.max(0, Math.min(100, Math.round((1 - usedCredits / monthlyLimit) * 100)))
-              : 100;
-            rows.push({
-              label: 'Extra Usage',
-              percent: remainingPct,
-              percentLabel: `$${usedDollars} / $${limitDollars}`,
-              resetLabel: monthlyLimit > 0 ? `${remainingPct}% remaining` : 'Usage active',
-              warning: remainingPct < 20,
-            });
+            const usedRaw = bodyObj.extra_usage.used_credits;
+            const limitRaw = bodyObj.extra_usage.monthly_limit;
+            const usedCredits = usedRaw !== undefined && usedRaw !== null ? Number(usedRaw) : NaN;
+            const monthlyLimit = limitRaw !== undefined && limitRaw !== null ? Number(limitRaw) : NaN;
+            if (isNaN(usedCredits) || isNaN(monthlyLimit) || monthlyLimit <= 0) {
+              rows.push({
+                label: 'Extra Usage',
+                percent: null,
+                percentLabel: 'No data',
+                resetLabel: 'No quota data',
+                warning: false,
+              });
+            } else {
+              const usedDollars = (usedCredits / 100).toFixed(2);
+              const limitDollars = (monthlyLimit / 100).toFixed(2);
+              const remainingPct = Math.max(0, Math.min(100, Math.round((1 - usedCredits / monthlyLimit) * 100)));
+              rows.push({
+                label: 'Extra Usage',
+                percent: remainingPct,
+                percentLabel: `$${usedDollars} / $${limitDollars}`,
+                resetLabel: `${remainingPct}% remaining`,
+                warning: remainingPct < 20,
+              });
+            }
           }
 
           rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -2914,7 +3015,7 @@ body {
             groups: [{
               title: 'CLAUDE USAGE',
               models: 'Claude 3.7 Sonnet / Opus',
-              rows: rows.length > 0 ? rows : [{ label: 'Quota', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
+              rows: rows.length > 0 ? rows : [{ label: 'Quota', percent: null, percentLabel: 'No data', resetLabel: 'No quota data', resetMs: null, warning: false }],
             }],
           };
           return;
@@ -2975,19 +3076,26 @@ body {
         if (typeof usedPercent === 'string') usedPercent = parseFloat(usedPercent);
       }
 
-      let remaining = 100;
-      if (typeof usedPercent === 'number' && !isNaN(usedPercent)) {
-        remaining = Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
-      } else if (limitReached === true || allowed === false) {
-        remaining = 0;
-      }
-
       const resetAt = windowObj?.reset_at ?? windowObj?.resetAt;
       const resetAfter = windowObj?.reset_after_seconds ?? windowObj?.resetAfterSeconds;
       const resetInfo = formatResetInfo(resetAt, resetAfter);
 
-      const percentLabel = remaining === 100 ? 'Quota available' : `${remaining}% remaining`;
-      const resetLabel = remaining === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+      let remaining = null;
+      let percentLabel = 'No data';
+      let resetLabel = resetInfo.ms ? resetInfo.label : 'No quota data';
+      let warning = false;
+
+      if (limitReached === true || allowed === false) {
+        remaining = 0;
+        percentLabel = '0% remaining';
+        resetLabel = resetInfo.label;
+        warning = true;
+      } else if (typeof usedPercent === 'number' && !isNaN(usedPercent)) {
+        remaining = Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
+        percentLabel = remaining === 100 ? 'Quota available' : `${remaining}% remaining`;
+        resetLabel = remaining === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
+        warning = remaining < 20;
+      }
 
       return {
         label: defaultLabel,
@@ -2995,7 +3103,7 @@ body {
         percentLabel: percentLabel,
         resetLabel: resetLabel,
         resetMs: resetInfo.ms,
-        warning: remaining < 20 || limitReached === true || allowed === false,
+        warning: warning,
       };
     }
 
@@ -3283,7 +3391,7 @@ body {
             groups: [{
               title: 'CODEX RATE LIMITS',
               models: 'GPT-5.6 / Codex',
-              rows: rows.length > 0 ? rows : [{ label: 'Primary Window', percent: 100, percentLabel: 'Quota available', resetLabel: 'Quota available', warning: false }],
+              rows: rows.length > 0 ? rows : [{ label: 'Primary Window', percent: null, percentLabel: 'No data', resetLabel: 'No quota data', resetMs: null, warning: false }],
             }],
           };
           return;
@@ -3416,11 +3524,11 @@ body {
   }
 
   function remainingPercent(used, limit) {
-    if (typeof limit === 'number' && limit > 0 && typeof used === 'number') {
+    if (typeof limit === 'number' && !isNaN(limit) && limit > 0 && typeof used === 'number' && !isNaN(used)) {
       return Math.max(0, Math.min(100, Math.round(((limit - used) / limit) * 100)));
     }
-    if (typeof used === 'number' && used > 0 && (limit === null || limit === 0)) return 0;
-    return 100;
+    if (typeof used === 'number' && !isNaN(used) && used > 0 && (limit === null || limit === 0)) return 0;
+    return null;
   }
 
   function quotaRow(label, used, limit, resetAtMs, resetHint) {
@@ -3428,14 +3536,25 @@ body {
     const resetInfo = formatResetInfo(resetAtMs, null);
     let resetLabel = resetInfo.label;
     if (!resetInfo.ms && resetHint) resetLabel = `Refreshes in ${resetHint}`;
-    const percentLabel = percent === 100 ? 'Quota available' : `${percent}% remaining`;
+
+    let percentLabel;
+    let warning = false;
+    if (percent === null || percent === undefined || isNaN(percent)) {
+      percentLabel = 'No data';
+      warning = false;
+      if (!resetInfo.ms) resetLabel = 'No quota data';
+    } else {
+      percentLabel = percent === 100 ? 'Quota available' : `${percent}% remaining`;
+      warning = percent < 20;
+    }
+
     return {
       label,
       percent,
       percentLabel,
       resetLabel,
       resetMs: resetInfo.ms,
-      warning: percent < 20,
+      warning,
     };
   }
 
@@ -3484,7 +3603,7 @@ body {
       if (used === null && limit === null) return;
       const resetAt = detail.reset_at || detail.resetAt || detail.reset_time || detail.resetTime || item.reset_at || item.resetAt;
       const label = kimiWindowLabel(item, detail, windowObj, index);
-      rows.push(quotaRow(label, used ?? 0, limit ?? 0, resetAt, null));
+      rows.push(quotaRow(label, used, limit, resetAt, null));
     });
     if (payload.usage && typeof payload.usage === 'object') {
       const usage = payload.usage;
@@ -3496,7 +3615,7 @@ body {
       }
       if (used !== null || limit !== null) {
         const resetAt = usage.reset_at || usage.resetAt || usage.reset_time || usage.resetTime;
-        rows.push(quotaRow('Weekly Limit', used ?? 0, limit ?? 0, resetAt, null));
+        rows.push(quotaRow('Weekly Limit', used, limit, resetAt, null));
       }
     }
     rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -3527,9 +3646,10 @@ body {
               models: 'Kimi / Moonshot',
               rows: rows.length > 0 ? rows : [{
                 label: 'Quota',
-                percent: 100,
-                percentLabel: 'Quota available',
-                resetLabel: 'Quota available',
+                percent: null,
+                percentLabel: 'No data',
+                resetLabel: 'No quota data',
+                resetMs: null,
                 warning: false,
               }],
             }],
@@ -3655,24 +3775,34 @@ body {
 
       if (billing) {
         const rows = [];
-        if (billing.hasWeekly && billing.usagePercent !== null) {
-          const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
+        if (billing.hasWeekly) {
           const resetInfo = formatResetInfo(billing.periodEnd, null);
-          rows.push({
-            label: 'Weekly Limit',
-            percent: remaining,
-            percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
-            resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
-            resetMs: resetInfo.ms,
-            warning: remaining < 20,
-          });
+          if (billing.usagePercent !== null && !isNaN(billing.usagePercent)) {
+            const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
+            rows.push({
+              label: 'Weekly Limit',
+              percent: remaining,
+              percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
+              resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
+              resetMs: resetInfo.ms,
+              warning: remaining < 20,
+            });
+          } else {
+            rows.push({
+              label: 'Weekly Limit',
+              percent: null,
+              percentLabel: 'No data',
+              resetLabel: resetInfo.ms ? resetInfo.label : 'No quota data',
+              resetMs: resetInfo.ms,
+              warning: false,
+            });
+          }
         }
         if (billing.hasMonthly && billing.monthlyLimit !== null && billing.monthlyLimit > 0) {
-          const used = billing.used ?? 0;
-          rows.push(quotaRow('Monthly Credits', used, billing.monthlyLimit, billing.periodEnd, null));
+          rows.push(quotaRow('Monthly Credits', billing.used, billing.monthlyLimit, billing.periodEnd, null));
         }
         if (billing.onDemandCap !== null && billing.onDemandCap > 0) {
-          rows.push(quotaRow('On-demand Cap', billing.onDemandUsed ?? 0, billing.onDemandCap, null, null));
+          rows.push(quotaRow('On-demand Cap', billing.onDemandUsed, billing.onDemandCap, null, null));
         }
         (billing.productUsage || []).forEach((item) => {
           if (!item || typeof item !== 'object') return;
@@ -3696,9 +3826,10 @@ body {
             models: 'Grok / xAI',
             rows: rows.length > 0 ? rows : [{
               label: 'Quota',
-              percent: 100,
-              percentLabel: 'Quota available',
-              resetLabel: 'Quota available',
+              percent: null,
+              percentLabel: 'No data',
+              resetLabel: 'No quota data',
+              resetMs: null,
               warning: false,
             }],
           }],
@@ -3808,11 +3939,6 @@ body {
       });
     });
     return minMs;
-  }
-
-  function updateLoadedCount() {
-    const loaded = Object.values(quotaStore).filter(q => q.groups && q.groups.length > 0).length;
-    document.getElementById('stat-loaded').textContent = loaded;
   }
 
   function normalizeBuckets(rawBuckets) {
@@ -4380,8 +4506,12 @@ body {
         <div class="quota-group">
           <div class="group-title">${escapeHtml(group.title)}</div>
           ${group.models ? `<div class="group-models">Models in this group: ${escapeHtml(group.models)}</div>` : ''}
-          ${group.rows.map(row => `
-            <div class="meter-row">
+          ${group.rows.map(row => {
+            const isNoData = row.percent === null || row.percent === undefined || isNaN(row.percent);
+            const fillClass = isNoData ? 'no-data' : (row.percent < 10 ? 'critical' : row.percent < 30 ? 'warning' : '');
+            const fillStyle = isNoData ? 'width: 100%;' : `width: ${row.percent}%;`;
+            return `
+            <div class="meter-row" data-reset-ms="${row.resetMs || ''}">
               <div class="meter-header">
                 <span class="meter-label">${escapeHtml(row.label)}</span>
                 <span class="meter-meta">
@@ -4390,10 +4520,10 @@ body {
                 </span>
               </div>
               <div class="track">
-                <div class="fill ${row.percent < 10 ? 'critical' : row.percent < 30 ? 'warning' : ''}" style="width: ${row.percent}%;"></div>
+                <div class="fill ${fillClass}" style="${fillStyle}"></div>
               </div>
             </div>
-          `).join('')}
+          `;}).join('')}
         </div>
       `).join('');
     } else {
@@ -4535,7 +4665,7 @@ body {
       }
     } catch (e) {
       console.error('Failed to load Ego analytics:', e);
-      showToast('Error cargando métricas de Ego', 'error');
+      showToast('Error cargando métricas de Ego', true);
     }
   }
 
