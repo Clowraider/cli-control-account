@@ -1,18 +1,9 @@
 package ego
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	urlPkg "net/url"
 	"regexp"
 	"strings"
-	"time"
 )
-
-// DefaultLiteLLMPricingURL is the default remote upstream endpoint for LiteLLM pricing metadata.
-const DefaultLiteLLMPricingURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 
 // DefaultCuratedPricing provides offline embedded rates per token in USD for mainstream models.
 var DefaultCuratedPricing = []ModelPricing{
@@ -286,111 +277,4 @@ func CalculateTokenCost(pricing ModelPricing, provider string, promptTokens, com
 	totalCost = promptCost + outputCost
 
 	return totalCost, promptCost, outputCost
-}
-
-// liteLLMRawEntry matches an entry in LiteLLM's model_prices_and_context_window.json.
-type liteLLMRawEntry struct {
-	InputCostPerToken       *float64 `json:"input_cost_per_token"`
-	OutputCostPerToken      *float64 `json:"output_cost_per_token"`
-	CacheReadInputTokenCost *float64 `json:"cache_read_input_token_cost"`
-}
-
-// ParseLiteLLMPricing parses JSON from LiteLLM's model_prices_and_context_window.json payload.
-func ParseLiteLLMPricing(data []byte) ([]ModelPricing, error) {
-	var rawMap map[string]liteLLMRawEntry
-	if err := json.Unmarshal(data, &rawMap); err != nil {
-		return nil, fmt.Errorf("failed to parse litellm pricing json: %w", err)
-	}
-
-	now := time.Now().UnixMilli()
-	results := make([]ModelPricing, 0, len(rawMap))
-
-	for modelKey, entry := range rawMap {
-		if modelKey == "sample_spec" || strings.TrimSpace(modelKey) == "" {
-			continue
-		}
-
-		var inRate, outRate, cacheRate float64
-		if entry.InputCostPerToken != nil {
-			inRate = *entry.InputCostPerToken
-		}
-		if entry.OutputCostPerToken != nil {
-			outRate = *entry.OutputCostPerToken
-		}
-		if entry.CacheReadInputTokenCost != nil {
-			cacheRate = *entry.CacheReadInputTokenCost
-		}
-
-		if inRate == 0 && outRate == 0 && cacheRate == 0 {
-			continue
-		}
-
-		results = append(results, ModelPricing{
-			Model:                   strings.ToLower(strings.TrimSpace(modelKey)),
-			InputCostPerToken:       inRate,
-			OutputCostPerToken:      outRate,
-			CacheReadInputTokenCost: cacheRate,
-			UpdatedAt:               now,
-		})
-	}
-
-	return results, nil
-}
-
-// SyncLiteLLMPricing fetches model pricing from LiteLLM's repository and upserts into SQLite storage.
-func (s *Storage) SyncLiteLLMPricing(url string) (int, error) {
-	if url == "" {
-		url = DefaultLiteLLMPricingURL
-	}
-
-	parsedURL, err := urlPkg.Parse(url)
-	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		return 0, fmt.Errorf("invalid pricing sync url: %s", url)
-	}
-
-	hostname := strings.ToLower(parsedURL.Hostname())
-	allowedHost := hostname == "raw.githubusercontent.com" || hostname == "githubusercontent.com" || hostname == "localhost" || hostname == "127.0.0.1"
-	if !allowedHost {
-		return 0, fmt.Errorf("untrusted pricing host: %s", hostname)
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch pricing from %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("unexpected status fetching pricing: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	// Read with limit (25 MB max)
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 25*1024*1024))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	pricingEntries, err := ParseLiteLLMPricing(body)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := s.UpsertPricingBatch(pricingEntries); err != nil {
-		return 0, fmt.Errorf("failed to save pricing entries to database: %w", err)
-	}
-
-	return len(pricingEntries), nil
-}
-
-// SyncLiteLLMPricing is a package-level helper that invokes SyncLiteLLMPricing on the active worker storage.
-func SyncLiteLLMPricing(url string) (int, error) {
-	w := GetWorker()
-	if w == nil || w.Storage() == nil {
-		return 0, fmt.Errorf("ego storage is not initialized")
-	}
-	return w.Storage().SyncLiteLLMPricing(url)
 }

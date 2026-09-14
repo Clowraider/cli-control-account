@@ -138,5 +138,4 @@ type EgoSettings struct {
 	DatabasePath  string `json:"database_path"`
 	DatabaseBytes int64  `json:"database_bytes"`
 	TotalRecords  int64  `json:"total_records"`
-	RetentionDays int    `json:"retention_days"`
 }

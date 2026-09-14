@@ -163,7 +163,6 @@ func (h *Handler) handleGetSettings(rw http.ResponseWriter, req *http.Request) {
 		DatabasePath:  storage.Path(),
 		DatabaseBytes: size,
 		TotalRecords:  total,
-		RetentionDays: 30,
 	}
 	h.writeJSON(rw, http.StatusOK, settings)
 }
