@@ -1798,6 +1798,9 @@ body {
 
     <!-- EGO VIEW SECTION -->
     <section id="ego-view-section" class="ego-view" style="display: none;">
+      <!-- Auth Warning Banner -->
+      <div id="ego-auth-warning" style="display: none; width: 100%; margin-bottom: 20px;"></div>
+
       <!-- Hero KPI Banner -->
       <div class="ego-hero-card">
         <div class="ego-hero-head">
@@ -4609,16 +4612,6 @@ body {
   let currentEgoRange = '24h';
   let currentActiveView = 'quota'; // 'quota' or 'ego'
 
-  function getPluginBaseResourcePath() {
-    // Current URL e.g. /v0/resource/plugins/control-account-linux-amd64/quota or /ego
-    const pathname = window.location.pathname || '';
-    const match = pathname.match(/^(.*\/resource\/plugins\/[^/]+)/);
-    if (match) {
-      return match[1];
-    }
-    return '/v0/resource/plugins/control-account';
-  }
-
   async function egoApiFetch(endpoint, options = {}) {
     let path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     return apiFetch(`/v0/management/ego${path}`, options);
@@ -4633,6 +4626,38 @@ body {
   }
 
   async function loadEgoOverview() {
+    const key = getManagementKey();
+    const egoWarn = document.getElementById('ego-auth-warning');
+
+    if (!key) {
+      if (egoWarn) {
+        egoWarn.innerHTML = `
+          <div class="auth-warning-box">
+            <div class="auth-warning-head">
+              <span class="auth-warning-icon">🔐</span>
+              <div>
+                <h3 class="auth-warning-title">Authentication Required / Sesión no autenticada</h3>
+              </div>
+            </div>
+            <p class="auth-warning-desc">
+              El plugin no pudo obtener la clave de administración (<strong>managementKey</strong>) desde el almacenamiento del navegador.<br>
+              En <strong>CPAMC</strong>, la clave solo se almacena de forma accesible para los plugins dentro del iframe cuando inicias sesión marcando la casilla <strong>"Remember password"</strong> (Recordar contraseña).
+            </p>
+            <div class="auth-warning-steps">
+              <strong>¿Cómo solucionarlo?</strong>
+              <ol>
+                <li>Cierra sesión o recarga la consola principal de <strong>CPAMC</strong>.</li>
+                <li>Al iniciar sesión, asegúrate de <strong>marcar la casilla "Remember password"</strong>.</li>
+                <li>Vuelve a abrir este panel de <strong>Control Account</strong>.</li>
+              </ol>
+            </div>
+          </div>
+        `;
+        egoWarn.style.display = 'block';
+      }
+      return;
+    }
+
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
         egoApiFetch(`/stats?range=${currentEgoRange}&provider=all`).then(r => r.json()),
@@ -4642,6 +4667,39 @@ body {
         egoApiFetch('/settings').then(r => r.json()),
         egoApiFetch(`/timeline?range=${currentEgoRange}&provider=all`).then(r => r.json())
       ]);
+
+      const is401 = [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes].some(
+        r => r.status === 'fulfilled' && r.value && typeof r.value === 'object' && (
+          r.value.error === 'missing management key' ||
+          r.value.error === 'invalid management key' ||
+          String(r.value.error || '').includes('401')
+        )
+      );
+
+      if (is401) {
+        if (egoWarn) {
+          egoWarn.innerHTML = `
+            <div class="auth-warning-box">
+              <div class="auth-warning-head">
+                <span class="auth-warning-icon">⛔</span>
+                <div>
+                  <h3 class="auth-warning-title">401 Unauthorized / Clave no válida</h3>
+                </div>
+              </div>
+              <p class="auth-warning-desc">
+                La clave de administración proporcionada fue rechazada por el servidor con error 401.<br>
+                Por favor, vuelve a iniciar sesión en CPAMC con la clave correcta y la casilla <strong>"Remember password"</strong> marcada.
+              </p>
+            </div>
+          `;
+          egoWarn.style.display = 'block';
+        }
+        return;
+      }
+
+      if (egoWarn) {
+        egoWarn.style.display = 'none';
+      }
 
       if (statsRes.status === 'fulfilled' && statsRes.value && !statsRes.value.error) {
         renderEgoKPIs(statsRes.value);
