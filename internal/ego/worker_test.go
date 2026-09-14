@@ -352,3 +352,100 @@ func TestTransformToEgoEvent_ColdCacheCostIsNotDoubleCounted(t *testing.T) {
 		t.Errorf("expected prompt cost %f, got %f (diff: %e)", expectedPrompt, promptCost, diff)
 	}
 }
+
+func TestTransformToEgoEvent_TotalTokensFallback(t *testing.T) {
+	tests := []struct {
+		name          string
+		provider      string
+		executorType  string
+		detail        RawUsageDetail
+		expectedTotal int64
+	}{
+		{
+			name:     "subset (openai): completion subsumes reasoning when total is 0",
+			provider: "openai",
+			detail: RawUsageDetail{
+				InputTokens:     1000,
+				OutputTokens:    500,
+				ReasoningTokens: 200,
+				TotalTokens:     0,
+			},
+			expectedTotal: 1500, // 1000 + 500
+		},
+		{
+			name:     "subset (openai): reasoning exceeds completion when total is 0",
+			provider: "openai",
+			detail: RawUsageDetail{
+				InputTokens:     1000,
+				OutputTokens:    100,
+				ReasoningTokens: 300,
+				TotalTokens:     0,
+			},
+			expectedTotal: 1300, // 1000 + 300
+		},
+		{
+			name:     "separateReasoning (gemini): reasoning is additive to completion when total is 0",
+			provider: "gemini",
+			detail: RawUsageDetail{
+				InputTokens:     1000,
+				OutputTokens:    500,
+				ReasoningTokens: 200,
+				TotalTokens:     0,
+			},
+			expectedTotal: 1700, // 1000 + 500 + 200
+		},
+		{
+			name:     "independent (claude): prompt + cached + cacheCreation + completion + reasoning when total is 0",
+			provider: "claude",
+			detail: RawUsageDetail{
+				InputTokens:         1000,
+				OutputTokens:        500,
+				ReasoningTokens:     200,
+				CacheReadTokens:     5000,
+				CacheCreationTokens: 2000,
+				TotalTokens:         0,
+			},
+			expectedTotal: 8700, // 1000 + 5000 + 2000 + 500 + 200
+		},
+		{
+			name:         "openai-compatible-claude: uses subset semantics when total is 0",
+			provider:     "openai-compatible-claude",
+			executorType: "openaicompatexecutor",
+			detail: RawUsageDetail{
+				InputTokens:     1000,
+				OutputTokens:    500,
+				ReasoningTokens: 200,
+				TotalTokens:     0,
+			},
+			expectedTotal: 1500, // 1000 + 500 (reasoning not double-counted)
+		},
+		{
+			name:     "explicit total from upstream is preserved as-is",
+			provider: "openai",
+			detail: RawUsageDetail{
+				InputTokens:     1000,
+				OutputTokens:    500,
+				ReasoningTokens: 200,
+				TotalTokens:     9999,
+			},
+			expectedTotal: 9999,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := transformToEgoEvent(RawUsageRecord{
+				Provider:     tt.provider,
+				ExecutorType: tt.executorType,
+				Model:        "test-model",
+				AuthID:       "test-account",
+				RequestedAt:  time.Now(),
+				Detail:       tt.detail,
+			})
+
+			if event.TotalTokens != tt.expectedTotal {
+				t.Errorf("expected total tokens %d, got %d", tt.expectedTotal, event.TotalTokens)
+			}
+		})
+	}
+}

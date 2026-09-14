@@ -161,9 +161,27 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 		cached = rec.Detail.CachedTokens
 	}
 	cacheCreation := rec.Detail.CacheCreationTokens
+
+	provider := strings.ToLower(strings.TrimSpace(rec.Provider))
+	if provider == "" {
+		provider = "unknown"
+	}
+
 	total := rec.Detail.TotalTokens
 	if total == 0 {
-		total = prompt + completion + reasoning
+		semantics := ResolveTokenSemantics(provider, rec.ExecutorType)
+		switch semantics {
+		case SemanticsIndependent:
+			total = prompt + cached + cacheCreation + completion + reasoning
+		case SemanticsSeparateReasoning:
+			total = prompt + completion + reasoning
+		default: // SemanticsSubset
+			outTokens := completion
+			if outTokens < reasoning {
+				outTokens = reasoning
+			}
+			total = prompt + outTokens
+		}
 	}
 
 	status := "success"
@@ -171,10 +189,6 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 		status = "failed"
 	}
 
-	provider := strings.ToLower(strings.TrimSpace(rec.Provider))
-	if provider == "" {
-		provider = "unknown"
-	}
 	model := strings.TrimSpace(rec.Model)
 	if model == "" {
 		model = strings.TrimSpace(rec.Alias)

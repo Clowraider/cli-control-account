@@ -217,6 +217,24 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 			expectedTotal:  0.01392,
 		},
 		{
+			name:                "openai-compatible-claude: must resolve to subset semantics even though provider contains claude",
+			provider:            "openai-compatible-claude",
+			promptTokens:        1000,
+			completionTokens:    500,
+			reasoningTokens:     200,
+			cacheReadTokens:     400,
+			cacheCreationTokens: 0,
+			// Under subset (OpenAI compat):
+			// uncached: 600 * 0.000003 = 0.0018
+			// cached:   400 * 0.0000003 = 0.00012
+			// promptCost = 0.00192
+			// output: 500 * 0.000015 = 0.0075 (completion tokens subsume reasoning tokens)
+			// totalCost = 0.00942
+			expectedPrompt: 0.00192,
+			expectedOutput: 0.0075,
+			expectedTotal:  0.00942,
+		},
+		{
 			name:                "cached tokens exceed prompt tokens clamp in subset",
 			provider:            "openai",
 			promptTokens:        100,
@@ -245,6 +263,112 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 			}
 			if diff := outC - tt.expectedOutput; diff > tolerance || diff < -tolerance {
 				t.Errorf("expected output cost %f, got %f (diff: %e)", tt.expectedOutput, outC, diff)
+			}
+		})
+	}
+}
+
+func TestPricing_ResolveTokenSemantics(t *testing.T) {
+	tests := []struct {
+		name         string
+		provider     string
+		executorType string
+		expected     TokenAccountingSemantics
+	}{
+		{
+			name:     "openai-compatible-claude resolves to subset",
+			provider: "openai-compatible-claude",
+			expected: SemanticsSubset,
+		},
+		{
+			name:     "openai-compatible-gemini resolves to subset",
+			provider: "openai-compatible-gemini",
+			expected: SemanticsSubset,
+		},
+		{
+			name:     "openai-compatibility resolves to subset",
+			provider: "openai-compatibility",
+			expected: SemanticsSubset,
+		},
+		{
+			name:         "openaicompatexecutor with custom provider resolves to subset",
+			provider:     "custom-proxy",
+			executorType: "openaicompatexecutor",
+			expected:     SemanticsSubset,
+		},
+		{
+			name:         "openaicompat executor with claude in name resolves to subset",
+			provider:     "my-claude-endpoint",
+			executorType: "openai-compat-executor",
+			expected:     SemanticsSubset,
+		},
+		{
+			name:     "native claude resolves to independent",
+			provider: "claude",
+			expected: SemanticsIndependent,
+		},
+		{
+			name:     "anthropic resolves to independent",
+			provider: "anthropic",
+			expected: SemanticsIndependent,
+		},
+		{
+			name:     "native gemini resolves to separate reasoning",
+			provider: "gemini",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "vertex resolves to separate reasoning",
+			provider: "vertex",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "aistudio resolves to separate reasoning",
+			provider: "aistudio",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "antigravity resolves to separate reasoning",
+			provider: "antigravity",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "interaction resolves to separate reasoning",
+			provider: "interaction",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "interactions endpoint resolves to separate reasoning",
+			provider: "interactions",
+			expected: SemanticsSeparateReasoning,
+		},
+		{
+			name:     "openai standard resolves to subset",
+			provider: "openai",
+			expected: SemanticsSubset,
+		},
+		{
+			name:     "deepseek standard resolves to subset",
+			provider: "deepseek",
+			expected: SemanticsSubset,
+		},
+		{
+			name:     "unknown provider resolves to subset default",
+			provider: "unknown",
+			expected: SemanticsSubset,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got TokenAccountingSemantics
+			if tt.executorType != "" {
+				got = ResolveTokenSemantics(tt.provider, tt.executorType)
+			} else {
+				got = ResolveTokenSemantics(tt.provider)
+			}
+			if got != tt.expected {
+				t.Errorf("ResolveTokenSemantics(%q, %q) = %d, want %d", tt.provider, tt.executorType, got, tt.expected)
 			}
 		})
 	}

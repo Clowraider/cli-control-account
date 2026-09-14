@@ -211,16 +211,37 @@ const (
 )
 
 // ResolveTokenSemantics classifies provider accounting semantics according to CLIProxyAPI standards.
-func ResolveTokenSemantics(provider string) TokenAccountingSemantics {
+// Order of precedence matches CLIProxyAPI host runtime:
+// 1. OpenAI compatibility (via executorType or provider prefix/name) -> SemanticsSubset
+// 2. Claude / Anthropic -> SemanticsIndependent
+// 3. Gemini / Vertex / Interaction -> SemanticsSeparateReasoning
+// 4. Default -> SemanticsSubset
+func ResolveTokenSemantics(provider string, executorType ...string) TokenAccountingSemantics {
 	p := strings.ToLower(strings.TrimSpace(provider))
+	var cleanExec string
+	if len(executorType) > 0 {
+		cleanExec = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(executorType[0])), "-", "")
+	}
+
+	// 1. OpenAI-compatibility check (by executor or provider name/prefix)
+	if strings.Contains(cleanExec, "openaicompat") ||
+		p == "openai-compatibility" || strings.HasPrefix(p, "openai-compatible-") {
+		return SemanticsSubset
+	}
+
+	// 2. Claude / Anthropic check (independent counters)
 	if strings.Contains(p, "claude") || strings.Contains(p, "anthropic") {
 		return SemanticsIndependent
 	}
-	for _, marker := range []string{"gemini", "aistudio", "antigravity", "vertex"} {
+
+	// 3. Gemini / Vertex / Interaction family (separate reasoning, prompt includes cache)
+	for _, marker := range []string{"gemini", "aistudio", "antigravity", "vertex", "interaction"} {
 		if strings.Contains(p, marker) {
 			return SemanticsSeparateReasoning
 		}
 	}
+
+	// 4. Default subset (OpenAI, DeepSeek, etc.)
 	return SemanticsSubset
 }
 
