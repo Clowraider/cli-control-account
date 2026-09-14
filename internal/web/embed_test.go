@@ -426,3 +426,27 @@ func TestEmbeddedDashboard_RobustnessAndHardening(t *testing.T) {
 		t.Fatal("expected index.html to contain .fill.no-data CSS class")
 	}
 }
+
+func TestEmbeddedDashboard_EgoAuthHandlingAndCleanups(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Auth warning banner container in Ego view
+	if !strings.Contains(html, `id="ego-auth-warning"`) {
+		t.Fatal("expected index.html to contain ego-auth-warning container")
+	}
+
+	// Dead helper getPluginBaseResourcePath should be removed
+	if strings.Contains(html, "getPluginBaseResourcePath") {
+		t.Fatal("expected dead helper getPluginBaseResourcePath to be removed from index.html")
+	}
+
+	// loadEgoOverview checks for getManagementKey and 401
+	if !strings.Contains(html, "const key = getManagementKey()") {
+		t.Fatal("expected loadEgoOverview to verify managementKey")
+	}
+}

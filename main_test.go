@@ -320,3 +320,37 @@ func TestHandleManagementHTTP_InvalidPayload(t *testing.T) {
 		t.Errorf("expected error code 'invalid_request', got: %s", string(raw))
 	}
 }
+
+// TestManagementRegister_RoutesHaveNoMenu ensures that no authenticated management route
+// accidentally declares a Menu property. In CLIProxyAPI host runtime, GET routes with a non-empty
+// Menu are demoted to unauthenticated resourceRoutes, which would bypass management middleware.
+func TestManagementRegister_RoutesHaveNoMenu(t *testing.T) {
+	raw, err := handlePluginMethod("management.register", nil)
+	if err != nil {
+		t.Fatalf("failed to call management.register: %v", err)
+	}
+
+	var env envelope
+	if err := json.Unmarshal(raw, &env); err != nil || !env.OK {
+		t.Fatalf("expected OK envelope for management.register, got: %s", string(raw))
+	}
+
+	var reg struct {
+		Resources []map[string]any `json:"resources"`
+		Routes    []map[string]any `json:"routes"`
+	}
+	if err := json.Unmarshal(env.Result, &reg); err != nil {
+		t.Fatalf("failed to unmarshal registration payload: %v", err)
+	}
+
+	if len(reg.Routes) == 0 {
+		t.Fatalf("expected registered management routes, got none")
+	}
+
+	for _, route := range reg.Routes {
+		path, _ := route["Path"].(string)
+		if menu, ok := route["Menu"].(string); ok && strings.TrimSpace(menu) != "" {
+			t.Errorf("route %s declares Menu %q; management routes must NOT declare Menu or host will treat them as unauthenticated", path, menu)
+		}
+	}
+}
