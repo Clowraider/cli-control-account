@@ -393,3 +393,36 @@ func TestEmbeddedDashboard_JavaScriptSyntax(t *testing.T) {
 		t.Fatalf("embedded JavaScript has syntax error: %v\nOutput:\n%s", err, string(output))
 	}
 }
+
+func TestEmbeddedDashboard_RobustnessAndHardening(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Exactly one definition of function updateLoadedCount
+	countUpdateLoadedCount := strings.Count(html, "function updateLoadedCount")
+	if countUpdateLoadedCount != 1 {
+		t.Fatalf("expected exactly 1 definition of function updateLoadedCount in index.html, found %d", countUpdateLoadedCount)
+	}
+
+	// AbortController and 30s timeout
+	if !strings.Contains(html, "new AbortController()") {
+		t.Fatal("expected index.html to contain AbortController")
+	}
+	if !strings.Contains(html, "30000") {
+		t.Fatal("expected index.html to contain 30s timeout (30000)")
+	}
+
+	// 3-minute (180000 ms) auto-refresh interval
+	if !strings.Contains(html, "180000") {
+		t.Fatal("expected index.html to contain 3-minute auto-refresh interval (180000)")
+	}
+
+	// .fill.no-data class in CSS
+	if !strings.Contains(html, ".fill.no-data") {
+		t.Fatal("expected index.html to contain .fill.no-data CSS class")
+	}
+}
