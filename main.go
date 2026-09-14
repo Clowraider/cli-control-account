@@ -43,13 +43,17 @@ static void store_host_api(const cliproxy_host_api* host) {
 import "C"
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"unsafe"
 
+	"control-account/internal/ego"
 	"control-account/internal/handlers"
 	"control-account/internal/lifecycle"
 	"control-account/internal/version"
@@ -156,13 +160,14 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 				"Name":             "control-account",
 				"Version":          version.Version,
 				"Author":           "Clowraider",
-				"Description":      "Quota management dashboard with account prefix support",
+				"Description":      "Quota management dashboard and developer Ego analytics",
 				"GitHubRepository": "https://github.com/Clowraider/cli-control-account",
 				"Logo":             "",
 				"ConfigFields":     []any{},
 			},
 			"capabilities": map[string]any{
 				"management_api": true,
+				"usage_plugin":   true,
 			},
 		}
 		raw, err := json.Marshal(registration)
@@ -179,6 +184,11 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 					"Menu":        "Control Account",
 					"Description": "Quota management dashboard with account prefix display",
 				},
+				{
+					"Path":        "/ego",
+					"Menu":        "Ego",
+					"Description": "Developer Ego analytics: token burn & latency metrics",
+				},
 			},
 		}
 		raw, err := json.Marshal(regResponse)
@@ -186,6 +196,10 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 			return nil, err
 		}
 		return okEnvelope(raw), nil
+
+	case "usage.handle":
+		ego.GetWorker().Record(request)
+		return okEnvelope([]byte(`{"status":"ok"}`)), nil
 
 	case "management.handle":
 		return handleManagementHTTP(request)
@@ -201,10 +215,66 @@ func handleManagementHTTP(request []byte) ([]byte, error) {
 		_ = json.Unmarshal(request, &req)
 	}
 
-	// Resolve asset path from request path
+	// 1. Ego REST API routing (via ?api=... query parameter on /ego, or legacy /ego/api path)
+	var apiEndpoint string
+	if len(req.Query) > 0 && len(req.Query["api"]) > 0 && req.Query["api"][0] != "" {
+		apiEndpoint = req.Query["api"][0]
+	} else if strings.Contains(req.Path, "/ego/api") {
+		if idx := strings.Index(req.Path, "/ego/api"); idx != -1 {
+			apiEndpoint = req.Path[idx+len("/ego/api"):]
+		}
+	}
+
+	if apiEndpoint != "" {
+		if unescaped, err := url.QueryUnescape(apiEndpoint); err == nil {
+			apiEndpoint = unescaped
+		}
+		egoHandler := ego.NewHandler(ego.GetWorker())
+		cleanPath := strings.TrimPrefix(apiEndpoint, "/")
+		if idx := strings.Index(cleanPath, "?"); idx != -1 {
+			cleanPath = cleanPath[:idx]
+		}
+
+		httpReq := httptest.NewRequest(req.Method, "/ego/api/"+cleanPath, bytes.NewReader(req.Body))
+		for k, vv := range req.Headers {
+			for _, v := range vv {
+				httpReq.Header.Add(k, v)
+			}
+		}
+		if len(req.Query) > 0 {
+			q := httpReq.URL.Query()
+			for k, vv := range req.Query {
+				if k == "api" {
+					continue
+				}
+				for _, v := range vv {
+					q.Add(k, v)
+				}
+			}
+			httpReq.URL.RawQuery = q.Encode()
+		}
+
+		rec := httptest.NewRecorder()
+		egoHandler.ServeHTTP(rec, httpReq)
+
+		resp := managementResponsePayload{
+			StatusCode: rec.Code,
+			Headers:    rec.Header(),
+			Body:       base64.StdEncoding.EncodeToString(rec.Body.Bytes()),
+		}
+		raw, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return okEnvelope(raw), nil
+	}
+
+	// 2. Web UI Assets: Both /quota and /ego serve the single-page dashboard
 	subpath := req.Path
 	if idx := strings.Index(subpath, "/quota"); idx != -1 {
 		subpath = subpath[idx+len("/quota"):]
+	} else if idx := strings.Index(subpath, "/ego"); idx != -1 {
+		subpath = subpath[idx+len("/ego"):]
 	}
 	subpath = strings.TrimPrefix(subpath, "/")
 	if subpath == "" {

@@ -19,4 +19,8 @@ coverage.html
 # Local AI runtime & codegraph state
 .atl/
 .codegraph/
+*.db
+*.db-shm
+*.db-wal
+Task-Manager-Portable.html
 

@@ -1201,6 +1201,462 @@ body {
   display: inline;
   color: var(--meter-text-green);
 }
+
+/* --- Top Navigation Switcher --- */
+.main-nav {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.main-nav-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.main-nav-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.main-nav-btn.active {
+  background: var(--bg-surface-elevated);
+  color: #fff;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.main-nav-btn .nav-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.main-nav-btn.active .nav-badge {
+  background: var(--brand-claude);
+  color: #fff;
+}
+
+/* --- Ego View Styles --- */
+.ego-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ego-hero-card {
+  background: linear-gradient(135deg, rgba(23, 27, 38, 0.8) 0%, rgba(13, 17, 23, 0.95) 100%);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 14px;
+  padding: 24px 28px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.ego-hero-card::before {
+  content: '';
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(217, 119, 87, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.ego-hero-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.ego-title-col h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ego-title-col p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.ego-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ego-btn-range {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ego-btn-range:hover {
+  color: var(--text-primary);
+  border-color: var(--text-quaternary);
+}
+
+.ego-btn-range.active {
+  background: var(--text-primary, #f0f6fc);
+  color: #0d1117;
+  border-color: var(--text-primary, #f0f6fc);
+  font-weight: 700;
+}
+
+.ego-kpis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.ego-kpi-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.ego-kpi-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.ego-kpi-title {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-quaternary);
+  font-weight: 600;
+}
+
+.ego-kpi-val {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+}
+
+.ego-kpi-sub {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 8px;
+}
+
+.ego-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ego-chart-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ego-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ego-chart-title-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ego-chart-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ego-chart-stat-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  color: var(--text-quaternary);
+}
+
+.ego-chart-stat-pill strong {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-left: 4px;
+}
+
+.ego-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ego-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ego-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.ego-chart-svg-container {
+  width: 100%;
+  height: 180px;
+  position: relative;
+}
+
+.ego-chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ego-chart-bar-col {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.ego-chart-bar-col:hover rect:not([fill="transparent"]) {
+  filter: brightness(1.25);
+}
+
+.ego-chart-xaxis {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ego-chart-tooltip {
+  position: absolute;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  min-width: 175px;
+  transition: opacity 0.1s ease;
+}
+
+.ego-tt-header {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ego-tt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+}
+
+.ego-tt-sep {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+
+.ego-tt-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ego-tt-lbl {
+  color: var(--text-quaternary);
+  flex: 1;
+}
+
+.ego-tt-val {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.ego-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  color: var(--text-quaternary);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.ego-chart-empty-icon {
+  font-size: 24px;
+  opacity: 0.6;
+}
+
+.ego-grid-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
+}
+
+.ego-table-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px 20px;
+  overflow: hidden;
+}
+
+.ego-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.ego-table th {
+  color: var(--text-quaternary);
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ego-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+}
+
+.ego-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+}
+
+.ego-table .ego-col-primary {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ego-table .ego-col-mono {
+  font-family: var(--font-mono);
+}
+
+.ego-settings-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.ego-settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ego-settings-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ego-settings-info h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ego-settings-info p {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ego-btn-danger {
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid rgba(248, 81, 73, 0.35);
+  color: #f85149;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ego-btn-danger:hover {
+  background: #f85149;
+  color: #fff;
+}
   </style>
 </head>
 <body>
@@ -1209,7 +1665,7 @@ body {
     <header class="page-header">
       <div class="title-wrap">
         <div class="title-row">
-          <h1>Quota Management</h1>
+          <h1 id="page-main-heading">Quota Management</h1>
           <span class="version-badge">v__PLUGIN_VERSION__</span>
           <button id="btn-check-update" class="btn-check-update" title="Check for updates on GitHub" aria-label="Check for updates">
             <span id="update-icon" class="update-icon">↻</span>
@@ -1223,12 +1679,23 @@ body {
           <span class="meta-loaded"><strong id="stat-loaded">0</strong> loaded</span>
         </div>
       </div>
-      <div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <nav class="main-nav" aria-label="Plugin views">
+          <button id="nav-btn-quota" class="main-nav-btn active">
+            <span>Quota</span>
+          </button>
+          <button id="nav-btn-ego" class="main-nav-btn">
+            <span>Ego</span>
+            <span class="nav-badge">Analytics</span>
+          </button>
+        </nav>
         <button id="btn-refresh-all" class="btn-refresh-all">
-          <span id="refresh-all-icon">🔄</span> Refresh all credentials
+          <span id="refresh-all-icon">🔄</span> Refresh all
         </button>
       </div>
     </header>
+
+    <section id="quota-view-section">
 
     <!-- Global Throughput & Availability Panel -->
     <section id="throughput-panel" class="throughput-panel">
@@ -1323,6 +1790,231 @@ body {
     <main id="cards-grid" class="cards-grid">
       <!-- Injected by JavaScript -->
     </main>
+    </section>
+
+    <!-- EGO VIEW SECTION -->
+    <section id="ego-view-section" class="ego-view" style="display: none;">
+      <!-- Hero KPI Banner -->
+      <div class="ego-hero-card">
+        <div class="ego-hero-head">
+          <div class="ego-title-col">
+            <h2><span>🔥</span> Developer Ego Analytics</h2>
+            <p>Token consumption volume, historical throughput and real-world provider speed benchmarks.</p>
+          </div>
+          <div class="ego-controls-row">
+            <div id="ego-time-ranges">
+              <button class="ego-btn-range" data-range="1h">1h</button>
+              <button class="ego-btn-range active" data-range="24h">24h</button>
+              <button class="ego-btn-range" data-range="7d">7d</button>
+              <button class="ego-btn-range" data-range="30d">30d</button>
+              <button class="ego-btn-range" data-range="all">All</button>
+            </div>
+            <button id="ego-btn-refresh" class="btn-check-update" style="display:inline-flex; align-items:center; gap:6px;">
+              <span>↻</span> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="ego-kpis-grid">
+          <div class="ego-kpi-card">
+            <span class="ego-kpi-title">Total Tokens Burned</span>
+            <span id="ego-kpi-total-tokens" class="ego-kpi-val" style="color:var(--brand-claude);">0</span>
+            <span class="ego-kpi-sub">
+              <span>In: <strong id="ego-kpi-in-tokens">0</strong></span>
+              <span>&middot;</span>
+              <span>Out: <strong id="ego-kpi-out-tokens">0</strong></span>
+            </span>
+          </div>
+
+          <div class="ego-kpi-card">
+            <span class="ego-kpi-title">Estimated Retail Value</span>
+            <span id="ego-kpi-cost" class="ego-kpi-val" style="color:var(--meter-text-green);">$0.00</span>
+            <span class="ego-kpi-sub">
+              <span>Prompt: <strong id="ego-kpi-prompt-cost">$0.00</strong></span>
+              <span>&middot;</span>
+              <span>Output: <strong id="ego-kpi-output-cost">$0.00</strong></span>
+            </span>
+          </div>
+
+          <div class="ego-kpi-card">
+            <span class="ego-kpi-title">Average Latency</span>
+            <span id="ego-kpi-latency" class="ego-kpi-val" style="color:var(--brand-antigravity);">0ms</span>
+            <span class="ego-kpi-sub">
+              <span>Min: <strong id="ego-kpi-min-latency">0ms</strong></span>
+              <span>&middot;</span>
+              <span>Max: <strong id="ego-kpi-max-latency">0ms</strong></span>
+            </span>
+          </div>
+
+          <div class="ego-kpi-card">
+            <span class="ego-kpi-title">Requests Handled</span>
+            <span id="ego-kpi-requests" class="ego-kpi-val">0</span>
+            <span class="ego-kpi-sub">
+              <span style="color:var(--meter-text-green);">✓ <strong id="ego-kpi-success">0</strong></span>
+              <span style="color:var(--meter-text-critical);">✗ <strong id="ego-kpi-failed">0</strong></span>
+            </span>
+          </div>
+
+          <div class="ego-kpi-card">
+            <span class="ego-kpi-title">Efficiency &amp; Cache</span>
+            <span id="ego-kpi-cache-rate" class="ego-kpi-val" style="color:var(--meter-text-green);">0%</span>
+            <span class="ego-kpi-sub">
+              <span>Cached: <strong id="ego-kpi-cached-tokens">0</strong></span>
+              <span>&middot;</span>
+              <span>Thinking: <strong id="ego-kpi-reasoning-tokens">0</strong></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Burn Rate & Token Timeline Chart -->
+      <div id="ego-timeline-card" class="ego-chart-card">
+        <div class="ego-chart-head">
+          <div class="ego-chart-title-group">
+            <div class="ego-section-title" style="margin-bottom:0;">
+              <span>⚡</span> Burn Rate &amp; Token Timeline
+            </div>
+            <div class="ego-chart-stats">
+              <span class="ego-chart-stat-pill">Prompt: <strong id="ego-chart-prompt-tokens">0</strong></span>
+              <span class="ego-chart-stat-pill">Completion: <strong id="ego-chart-completion-tokens">0</strong></span>
+              <span class="ego-chart-stat-pill">Peak Bucket: <strong id="ego-chart-peak-tokens">0</strong></span>
+            </div>
+          </div>
+          <div class="ego-chart-legend">
+            <span class="ego-legend-item">
+              <span class="ego-legend-dot" style="background:#38bdf8;"></span> Input / Prompt
+            </span>
+            <span class="ego-legend-item">
+              <span class="ego-legend-dot" style="background:#a855f7;"></span> Output / Completion
+            </span>
+          </div>
+        </div>
+
+        <div id="ego-chart-empty" class="ego-chart-empty" style="display:none;">
+          <span class="ego-chart-empty-icon">📊</span>
+          <span>No token activity recorded for this time range.</span>
+        </div>
+
+        <div id="ego-chart-content" class="ego-chart-content">
+          <div class="ego-chart-svg-container">
+            <svg id="ego-chart-svg" class="ego-chart-svg" preserveAspectRatio="none"></svg>
+          </div>
+          <div id="ego-chart-xaxis" class="ego-chart-xaxis"></div>
+        </div>
+
+        <div id="ego-chart-tooltip" class="ego-chart-tooltip" style="display:none;"></div>
+      </div>
+
+      <!-- Rankings Grid -->
+      <div class="ego-grid-two">
+        <!-- Providers Ranking Table -->
+        <div class="ego-table-card">
+          <div class="ego-section-title">
+            <span>🏆</span> Provider Speed &amp; Volume
+          </div>
+          <table class="ego-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Requests</th>
+                <th>Tokens Burned</th>
+                <th>Avg Latency</th>
+                <th>Success</th>
+              </tr>
+            </thead>
+            <tbody id="ego-tbody-providers">
+              <tr><td colspan="5" style="text-align:center; padding:20px;">Cargando datos...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Models Ranking Table -->
+        <div class="ego-table-card">
+          <div class="ego-section-title">
+            <span>🤖</span> Top Models
+          </div>
+          <table class="ego-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Provider</th>
+                <th>Requests</th>
+                <th>Total Tokens</th>
+                <th>Est. Value</th>
+                <th>Avg Latency</th>
+              </tr>
+            </thead>
+            <tbody id="ego-tbody-models">
+              <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando datos...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Accounts Table -->
+      <div class="ego-table-card">
+        <div class="ego-section-title">
+          <span>👥</span> Top Accounts &amp; Key Usage
+        </div>
+        <table class="ego-table">
+          <thead>
+            <tr>
+              <th>Account / Credential</th>
+              <th>Provider</th>
+              <th>Requests</th>
+              <th>Prompt Tokens</th>
+              <th>Completion Tokens</th>
+              <th>Total Tokens</th>
+              <th>Avg Latency</th>
+            </tr>
+          </thead>
+          <tbody id="ego-tbody-accounts">
+            <tr><td colspan="7" style="text-align:center; padding:20px;">Cargando datos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Database Maintenance & Settings -->
+      <div class="ego-settings-card">
+        <div class="ego-section-title">
+          <span>⚙️</span> Ego Engine Maintenance &amp; Settings
+        </div>
+
+        <div class="ego-settings-row">
+          <div class="ego-settings-info">
+            <h4>Ingestion Active</h4>
+            <p>Habilita o deshabilita la captura asíncrona de tokens y latencias sin detener el proxy.</p>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="ego-toggle-active" checked aria-label="Toggle Ego Ingestion">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+
+        <div class="ego-settings-row">
+          <div class="ego-settings-info">
+            <h4>Database Footprint</h4>
+            <p>Archivo local SQLite en modo WAL: <code id="ego-db-path" style="color:var(--text-primary);">plugins/ego.db</code> &middot; Registros: <strong id="ego-db-records">0</strong> &middot; Tamaño: <strong id="ego-db-size">0 KB</strong></p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <select id="ego-prune-days" class="sort-select" style="padding:6px 10px; font-size:12px;">
+              <option value="7">Older than 7 days</option>
+              <option value="30" selected>Older than 30 days</option>
+              <option value="90">Older than 90 days</option>
+            </select>
+            <button id="ego-btn-prune" class="btn-secondary" style="padding:6px 14px; font-size:12px;">Purgar datos</button>
+          </div>
+        </div>
+
+        <div class="ego-settings-row">
+          <div class="ego-settings-info">
+            <h4>Reset Database</h4>
+            <p>Vacía completamente la tabla de métricas y ejecuta un VACUUM para recuperar espacio en disco.</p>
+          </div>
+          <button id="ego-btn-reset" class="ego-btn-danger">Reiniciar base de datos</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- Prefix Edit Modal -->
@@ -3780,6 +4472,656 @@ body {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   }
+
+  // =========================================================================
+  // --- EGO ANALYTICS CLIENT LOGIC ---
+  // =========================================================================
+  let currentEgoRange = '24h';
+  let currentActiveView = 'quota'; // 'quota' or 'ego'
+
+  function getPluginBaseResourcePath() {
+    // Current URL e.g. /v0/resource/plugins/control-account-linux-amd64/quota or /ego
+    const pathname = window.location.pathname || '';
+    const match = pathname.match(/^(.*\/resource\/plugins\/[^/]+)/);
+    if (match) {
+      return match[1];
+    }
+    return '/v0/resource/plugins/control-account';
+  }
+
+  async function egoApiFetch(endpoint, options = {}) {
+    const basePath = getPluginBaseResourcePath();
+    const [subpath, queryString] = endpoint.split('?');
+    let fullUrl = `${basePath}/ego?api=${subpath}`;
+    if (queryString) {
+      fullUrl += `&${queryString}`;
+    }
+    return apiFetch(fullUrl, options);
+  }
+
+  function formatCompactTokens(num) {
+    if (!Number.isFinite(num) || num <= 0) return '0';
+    if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + 'B';
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M';
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k';
+    return num.toLocaleString();
+  }
+
+  async function loadEgoOverview() {
+    try {
+      const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
+        egoApiFetch(`/stats?range=${currentEgoRange}&provider=all`).then(r => r.json()),
+        egoApiFetch(`/providers?range=${currentEgoRange}`).then(r => r.json()),
+        egoApiFetch(`/models?range=${currentEgoRange}&provider=all`).then(r => r.json()),
+        egoApiFetch(`/accounts?range=${currentEgoRange}&provider=all`).then(r => r.json()),
+        egoApiFetch('/settings').then(r => r.json()),
+        egoApiFetch(`/timeline?range=${currentEgoRange}&provider=all`).then(r => r.json())
+      ]);
+
+      if (statsRes.status === 'fulfilled' && statsRes.value && !statsRes.value.error) {
+        renderEgoKPIs(statsRes.value);
+      }
+      if (providersRes.status === 'fulfilled' && Array.isArray(providersRes.value)) {
+        renderEgoProvidersTable(providersRes.value);
+      }
+      if (modelsRes.status === 'fulfilled' && Array.isArray(modelsRes.value)) {
+        renderEgoModelsTable(modelsRes.value);
+      }
+      if (accountsRes.status === 'fulfilled' && Array.isArray(accountsRes.value)) {
+        renderEgoAccountsTable(accountsRes.value);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value && !settingsRes.value.error) {
+        renderEgoSettings(settingsRes.value);
+      }
+      if (timelineRes.status === 'fulfilled' && timelineRes.value && !timelineRes.value.error) {
+        renderEgoTimelineChart(timelineRes.value);
+      } else {
+        renderEgoTimelineChart([]);
+      }
+    } catch (e) {
+      console.error('Failed to load Ego analytics:', e);
+      showToast('Error cargando métricas de Ego', 'error');
+    }
+  }
+
+  function formatEgoTimelineLabel(timeBucket, timestamp, range) {
+    if (!timeBucket) return '';
+    if (range === '1h' || range === '24h') {
+      const parts = timeBucket.split(' ');
+      return parts.length > 1 ? parts[1] : timeBucket;
+    }
+    if (timestamp) {
+      const d = new Date(timestamp);
+      if (!isNaN(d.getTime())) {
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `${months[d.getMonth()]} ${d.getDate()}`;
+      }
+    }
+    const match = timeBucket.match(/^\d{4}-(\d{2})-(\d{2})/);
+    if (match) {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const m = parseInt(match[1], 10) - 1;
+      const d = parseInt(match[2], 10);
+      return `${months[m]} ${d}`;
+    }
+    return timeBucket;
+  }
+
+  function zeroFillEgoTimeline(points, range) {
+    if (!Array.isArray(points)) return [];
+    if (range === 'all') return points;
+
+    const pad2 = n => (n < 10 ? '0' + n : '' + n);
+
+    if (range === '1h') {
+      const stepMs = 5 * 60 * 1000;
+      const map = new Map();
+      for (const p of points) {
+        if (p && p.timestamp) {
+          const k = Math.floor(p.timestamp / stepMs) * stepMs;
+          const existing = map.get(k);
+          if (existing) {
+            existing.prompt_tokens = (existing.prompt_tokens || 0) + (p.prompt_tokens || 0);
+            existing.completion_tokens = (existing.completion_tokens || 0) + (p.completion_tokens || 0);
+            existing.total_tokens = (existing.total_tokens || 0) + (p.total_tokens || 0);
+            existing.total_requests = (existing.total_requests || 0) + (p.total_requests || 0);
+          } else {
+            map.set(k, { ...p });
+          }
+        }
+      }
+
+      const now = Date.now();
+      const currentSlot = Math.floor(now / stepMs) * stepMs;
+      const result = [];
+      for (let i = 11; i >= 0; i--) {
+        const slotTs = currentSlot - i * stepMs;
+        const d = new Date(slotTs);
+        const label = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        const existing = map.get(slotTs);
+        if (existing) {
+          result.push({ ...existing, time_bucket: label, timestamp: slotTs });
+        } else {
+          result.push({
+            time_bucket: label,
+            timestamp: slotTs,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            total_requests: 0,
+            avg_latency_ms: 0
+          });
+        }
+      }
+      return result;
+    }
+
+    if (range === '24h') {
+      const stepMs = 3600 * 1000;
+      const map = new Map();
+      for (const p of points) {
+        if (p && p.timestamp) {
+          const k = Math.floor(p.timestamp / stepMs) * stepMs;
+          const existing = map.get(k);
+          if (existing) {
+            existing.prompt_tokens = (existing.prompt_tokens || 0) + (p.prompt_tokens || 0);
+            existing.completion_tokens = (existing.completion_tokens || 0) + (p.completion_tokens || 0);
+            existing.total_tokens = (existing.total_tokens || 0) + (p.total_tokens || 0);
+            existing.total_requests = (existing.total_requests || 0) + (p.total_requests || 0);
+          } else {
+            map.set(k, { ...p });
+          }
+        }
+      }
+
+      const now = Date.now();
+      const currentSlot = Math.floor(now / stepMs) * stepMs;
+      const result = [];
+      for (let i = 23; i >= 0; i--) {
+        const slotTs = currentSlot - i * stepMs;
+        const d = new Date(slotTs);
+        const label = `${pad2(d.getHours())}:00`;
+        const existing = map.get(slotTs);
+        if (existing) {
+          result.push({ ...existing, time_bucket: label, timestamp: slotTs });
+        } else {
+          result.push({
+            time_bucket: label,
+            timestamp: slotTs,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            total_requests: 0,
+            avg_latency_ms: 0
+          });
+        }
+      }
+      return result;
+    }
+
+    if (range === '7d' || range === '30d') {
+      const numDays = range === '7d' ? 7 : 30;
+      const now = new Date();
+      const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const dayMs = 86400 * 1000;
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+      const result = [];
+      for (let i = numDays - 1; i >= 0; i--) {
+        const dayStart = todayMidnight - i * dayMs;
+        const dayEnd = dayStart + dayMs;
+        const d = new Date(dayStart);
+        const label = `${months[d.getMonth()]} ${d.getDate()}`;
+
+        let prompt = 0, comp = 0, total = 0, reqs = 0, latSum = 0, latCount = 0;
+        for (const p of points) {
+          if (p && p.timestamp && p.timestamp >= dayStart && p.timestamp < dayEnd) {
+            prompt += p.prompt_tokens || 0;
+            comp += p.completion_tokens || 0;
+            total += p.total_tokens || 0;
+            reqs += p.total_requests || 0;
+            if (p.avg_latency_ms > 0) {
+              latSum += p.avg_latency_ms;
+              latCount++;
+            }
+          }
+        }
+
+        result.push({
+          time_bucket: label,
+          timestamp: dayStart,
+          prompt_tokens: prompt,
+          completion_tokens: comp,
+          total_tokens: total,
+          total_requests: reqs,
+          avg_latency_ms: latCount > 0 ? Math.round(latSum / latCount) : 0
+        });
+      }
+      return result;
+    }
+
+    return points;
+  }
+
+  function renderEgoTimelineChart(rawPoints) {
+    const elCard = document.getElementById('ego-timeline-card');
+    const elEmpty = document.getElementById('ego-chart-empty');
+    const elContent = document.getElementById('ego-chart-content');
+    const elPromptStat = document.getElementById('ego-chart-prompt-tokens');
+    const elCompStat = document.getElementById('ego-chart-completion-tokens');
+    const elPeakStat = document.getElementById('ego-chart-peak-tokens');
+    const svg = document.getElementById('ego-chart-svg');
+    const elXaxis = document.getElementById('ego-chart-xaxis');
+    const tooltip = document.getElementById('ego-chart-tooltip');
+
+    if (!elCard || !svg) return;
+
+    const hasData = Array.isArray(rawPoints) && rawPoints.length > 0;
+    const hasTokens = hasData && rawPoints.some(p => (p.total_tokens || 0) > 0);
+
+    if (!hasData || !hasTokens) {
+      if (elPromptStat) elPromptStat.textContent = '0';
+      if (elCompStat) elCompStat.textContent = '0';
+      if (elPeakStat) elPeakStat.textContent = '0';
+      if (elEmpty) elEmpty.style.display = 'flex';
+      if (elContent) elContent.style.display = 'none';
+      if (tooltip) tooltip.style.display = 'none';
+      return;
+    }
+
+    if (elEmpty) elEmpty.style.display = 'none';
+    if (elContent) elContent.style.display = 'block';
+
+    const points = zeroFillEgoTimeline(rawPoints, currentEgoRange);
+
+    const totalPrompt = points.reduce((acc, p) => acc + (p.prompt_tokens || 0), 0);
+    const totalCompletion = points.reduce((acc, p) => acc + (p.completion_tokens || 0), 0);
+    const peakTokens = points.reduce((max, p) => Math.max(max, p.total_tokens || 0), 0);
+
+    if (elPromptStat) elPromptStat.textContent = formatCompactTokens(totalPrompt);
+    if (elCompStat) elCompStat.textContent = formatCompactTokens(totalCompletion);
+    if (elPeakStat) elPeakStat.textContent = formatCompactTokens(peakTokens);
+
+    const N = points.length;
+    const svgWidth = 1000;
+    const svgHeight = 160;
+    const paddingTop = 16;
+    const paddingBottom = 6;
+    const chartHeight = svgHeight - paddingTop - paddingBottom;
+    
+    // Auto-compact width if N is small (e.g. few days in 'all' view)
+    const maxColWidth = N >= 24 ? (svgWidth / N) : (N >= 12 ? 80 : 60);
+    const colWidth = Math.min(maxColWidth, svgWidth / N);
+    const totalWidth = colWidth * N;
+    const startX = (svgWidth - totalWidth) / 2;
+    const barWidth = Math.max(8, Math.min(colWidth * 0.65, 32));
+
+    let svgInner = '';
+    svgInner += `
+      <line x1="0" y1="${paddingTop}" x2="${svgWidth}" y2="${paddingTop}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3" />
+      <line x1="0" y1="${paddingTop + chartHeight * 0.5}" x2="${svgWidth}" y2="${paddingTop + chartHeight * 0.5}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3" />
+      <line x1="0" y1="${svgHeight - paddingBottom}" x2="${svgWidth}" y2="${svgHeight - paddingBottom}" stroke="rgba(255,255,255,0.12)" />
+    `;
+
+    points.forEach((p, i) => {
+      const promptTok = p.prompt_tokens || 0;
+      const compTok = p.completion_tokens || 0;
+      const totTok = p.total_tokens || (promptTok + compTok);
+
+      let promptH = peakTokens > 0 ? (promptTok / peakTokens) * chartHeight : 0;
+      let compH = peakTokens > 0 ? (compTok / peakTokens) * chartHeight : 0;
+
+      if (promptTok > 0 && promptH < 2) promptH = 2;
+      if (compTok > 0 && compH < 2) compH = 2;
+
+      const yBase = svgHeight - paddingBottom;
+      const promptY = yBase - promptH;
+      const compY = promptY - compH;
+      const colX = startX + i * colWidth;
+      const barX = colX + (colWidth - barWidth) / 2;
+
+      svgInner += `
+        <g class="ego-chart-bar-col" data-idx="${i}">
+          <rect x="${colX}" y="0" width="${colWidth}" height="${svgHeight}" fill="transparent" />
+          <rect x="${barX}" y="${paddingTop}" width="${barWidth}" height="${chartHeight}" rx="3" fill="rgba(255,255,255,0.02)" />
+          ${promptH > 0 ? `<rect x="${barX}" y="${promptY}" width="${barWidth}" height="${promptH}" rx="2" fill="#38bdf8" />` : ''}
+          ${compH > 0 ? `<rect x="${barX}" y="${compY}" width="${barWidth}" height="${compH}" rx="2" fill="#a855f7" />` : ''}
+          ${totTok === 0 ? `<rect x="${barX}" y="${yBase - 2}" width="${barWidth}" height="2" rx="1" fill="rgba(255,255,255,0.08)" />` : ''}
+        </g>
+      `;
+    });
+
+    svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+    svg.innerHTML = svgInner;
+
+    if (elXaxis) {
+      const step = N >= 24 ? 4 : (N > 12 ? 2 : 1);
+      if (startX > 0) {
+        elXaxis.style.display = 'flex';
+        elXaxis.style.justifyContent = 'center';
+        elXaxis.style.width = `${totalWidth}px`;
+        elXaxis.style.margin = '8px auto 0 auto';
+        elXaxis.innerHTML = points.map((p, i) => {
+          const isVisible = (i % step === 0) || (i === N - 1);
+          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, currentEgoRange);
+          return `<div style="width:${colWidth}px; text-align:center; font-size:10.5px; color:var(--text-quaternary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px;">${isVisible ? escapeHtml(label) : ''}</div>`;
+        }).join('');
+      } else {
+        elXaxis.style.display = 'grid';
+        elXaxis.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+        elXaxis.style.width = '100%';
+        elXaxis.style.margin = '8px 0 0 0';
+        elXaxis.innerHTML = points.map((p, i) => {
+          const isVisible = (i % step === 0) || (i === N - 1);
+          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, currentEgoRange);
+          return `<div style="text-align:center; font-size:10.5px; color:var(--text-quaternary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px;">${isVisible ? escapeHtml(label) : ''}</div>`;
+        }).join('');
+      }
+    }
+
+    svg.onmousemove = function(e) {
+      const col = e.target.closest('.ego-chart-bar-col');
+      if (!col || !tooltip) {
+        if (tooltip) tooltip.style.display = 'none';
+        return;
+      }
+
+      const idx = parseInt(col.dataset.idx, 10);
+      const p = points[idx];
+      if (!p) return;
+
+      const d = p.timestamp ? new Date(p.timestamp) : null;
+      let headerText = p.time_bucket || '';
+      if (d && !isNaN(d.getTime())) {
+        if (currentEgoRange === '1h' || currentEgoRange === '24h') {
+          headerText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + (p.time_bucket || '');
+        } else {
+          headerText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+
+      tooltip.innerHTML = `
+        <div class="ego-tt-header">${escapeHtml(headerText)}</div>
+        <div class="ego-tt-row">
+          <span class="ego-tt-dot" style="background:#38bdf8;"></span>
+          <span class="ego-tt-lbl">Prompt Tokens:</span>
+          <strong class="ego-tt-val">${(p.prompt_tokens || 0).toLocaleString()}</strong>
+        </div>
+        <div class="ego-tt-row">
+          <span class="ego-tt-dot" style="background:#a855f7;"></span>
+          <span class="ego-tt-lbl">Completion Tokens:</span>
+          <strong class="ego-tt-val">${(p.completion_tokens || 0).toLocaleString()}</strong>
+        </div>
+        <div class="ego-tt-row ego-tt-sep">
+          <span class="ego-tt-dot" style="background:var(--text-primary);"></span>
+          <span class="ego-tt-lbl">Total Tokens:</span>
+          <strong class="ego-tt-val">${(p.total_tokens || 0).toLocaleString()}</strong>
+        </div>
+        <div class="ego-tt-row">
+          <span class="ego-tt-dot" style="background:var(--brand-antigravity);"></span>
+          <span class="ego-tt-lbl">Total Requests:</span>
+          <strong class="ego-tt-val">${(p.total_requests || 0).toLocaleString()}</strong>
+        </div>
+      `;
+
+      tooltip.style.display = 'block';
+      const cardRect = elCard.getBoundingClientRect();
+      const mouseX = e.clientX - cardRect.left;
+      const mouseY = e.clientY - cardRect.top;
+      const ttWidth = tooltip.offsetWidth || 190;
+      const ttHeight = tooltip.offsetHeight || 130;
+
+      let left = mouseX + 14;
+      if (left + ttWidth > cardRect.width - 15) {
+        left = mouseX - ttWidth - 14;
+      }
+      let top = mouseY - ttHeight / 2;
+      if (top < 10) top = 10;
+      if (top + ttHeight > cardRect.height - 10) top = cardRect.height - ttHeight - 10;
+
+      tooltip.style.left = `${Math.max(10, Math.round(left))}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    };
+
+    svg.onmouseleave = function() {
+      if (tooltip) tooltip.style.display = 'none';
+    };
+  }
+
+  function formatUSD(val) {
+    const num = Number(val) || 0;
+    if (num > 0 && num < 0.01) {
+      return '$' + num.toFixed(4);
+    }
+    return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderEgoKPIs(stats) {
+    const elTotalTokens = document.getElementById('ego-kpi-total-tokens');
+    const elInTokens = document.getElementById('ego-kpi-in-tokens');
+    const elOutTokens = document.getElementById('ego-kpi-out-tokens');
+    const elCost = document.getElementById('ego-kpi-cost');
+    const elPromptCost = document.getElementById('ego-kpi-prompt-cost');
+    const elOutputCost = document.getElementById('ego-kpi-output-cost');
+    const elLatency = document.getElementById('ego-kpi-latency');
+    const elMinLat = document.getElementById('ego-kpi-min-latency');
+    const elMaxLat = document.getElementById('ego-kpi-max-latency');
+    const elRequests = document.getElementById('ego-kpi-requests');
+    const elSuccess = document.getElementById('ego-kpi-success');
+    const elFailed = document.getElementById('ego-kpi-failed');
+    const elCacheRate = document.getElementById('ego-kpi-cache-rate');
+    const elCached = document.getElementById('ego-kpi-cached-tokens');
+    const elReasoning = document.getElementById('ego-kpi-reasoning-tokens');
+
+    if (elTotalTokens) elTotalTokens.textContent = formatCompactTokens(stats.total_tokens);
+    if (elInTokens) elInTokens.textContent = formatCompactTokens(stats.prompt_tokens);
+    if (elOutTokens) elOutTokens.textContent = formatCompactTokens(stats.completion_tokens);
+    if (elCost) elCost.textContent = formatUSD(stats.estimated_cost_usd);
+    if (elPromptCost) elPromptCost.textContent = formatUSD(stats.input_cost_usd);
+    if (elOutputCost) elOutputCost.textContent = formatUSD(stats.output_cost_usd);
+    if (elLatency) elLatency.textContent = `${Math.round(stats.avg_latency_ms)}ms`;
+    if (elMinLat) elMinLat.textContent = `${stats.min_latency_ms}ms`;
+    if (elMaxLat) elMaxLat.textContent = `${stats.max_latency_ms}ms`;
+    if (elRequests) elRequests.textContent = stats.total_requests.toLocaleString();
+    if (elSuccess) elSuccess.textContent = stats.total_success.toLocaleString();
+    if (elFailed) elFailed.textContent = stats.total_failed.toLocaleString();
+
+    if (elCached) elCached.textContent = formatCompactTokens(stats.cached_tokens);
+    if (elReasoning) elReasoning.textContent = formatCompactTokens(stats.reasoning_tokens);
+
+    if (elCacheRate) {
+      const cacheBase = stats.prompt_tokens + stats.cached_tokens;
+      const rate = cacheBase > 0 ? ((stats.cached_tokens / cacheBase) * 100).toFixed(1) : '0';
+      elCacheRate.textContent = `${rate}%`;
+    }
+  }
+
+  function renderEgoProvidersTable(providers) {
+    const tbody = document.getElementById('ego-tbody-providers');
+    if (!tbody) return;
+
+    if (!providers || providers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--text-quaternary);">No request records yet for this window.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = providers.map(p => `
+      <tr>
+        <td class="ego-col-primary">${escapeHtml(p.provider.toUpperCase())}</td>
+        <td class="ego-col-mono">${p.total_requests.toLocaleString()}</td>
+        <td class="ego-col-mono" style="color:var(--brand-claude);">${formatCompactTokens(p.total_tokens)}</td>
+        <td class="ego-col-mono" style="color:var(--brand-antigravity);">${Math.round(p.avg_latency_ms)}ms</td>
+        <td><span class="plan-badge" style="color:${p.success_rate >= 95 ? 'var(--meter-text-green)' : 'var(--meter-text-critical)'};">${p.success_rate}%</span></td>
+      </tr>
+    `).join('');
+  }
+
+  function renderEgoModelsTable(models) {
+    const tbody = document.getElementById('ego-tbody-models');
+    if (!tbody) return;
+
+    if (!models || models.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-quaternary);">No model statistics recorded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = models.map(m => `
+      <tr>
+        <td class="ego-col-primary" title="${escapeHtml(m.model)}">${escapeHtml(m.model)}</td>
+        <td><span class="plan-badge">${escapeHtml(m.provider)}</span></td>
+        <td class="ego-col-mono">${m.total_requests.toLocaleString()}</td>
+        <td class="ego-col-mono" style="color:var(--brand-claude);">${formatCompactTokens(m.total_tokens)}</td>
+        <td class="ego-col-mono" style="color:var(--meter-text-green); font-weight:600;">${formatUSD(m.estimated_cost_usd)}</td>
+        <td class="ego-col-mono">${Math.round(m.avg_latency_ms)}ms</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderEgoAccountsTable(accounts) {
+    const tbody = document.getElementById('ego-tbody-accounts');
+    if (!tbody) return;
+
+    if (!accounts || accounts.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-quaternary);">No account records found in this window.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = accounts.map(a => `
+      <tr>
+        <td class="ego-col-primary" title="${escapeHtml(a.account)}">${escapeHtml(a.account)}</td>
+        <td><span class="plan-badge">${escapeHtml(a.provider)}</span></td>
+        <td class="ego-col-mono">${a.total_requests.toLocaleString()}</td>
+        <td class="ego-col-mono">${formatCompactTokens(a.prompt_tokens)}</td>
+        <td class="ego-col-mono">${formatCompactTokens(a.completion_tokens)}</td>
+        <td class="ego-col-mono" style="color:var(--brand-claude);">${formatCompactTokens(a.total_tokens)}</td>
+        <td class="ego-col-mono">${Math.round(a.avg_latency_ms)}ms</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderEgoSettings(settings) {
+    const toggle = document.getElementById('ego-toggle-active');
+    const pathEl = document.getElementById('ego-db-path');
+    const recordsEl = document.getElementById('ego-db-records');
+    const sizeEl = document.getElementById('ego-db-size');
+
+    if (toggle) toggle.checked = !!settings.enabled;
+    if (pathEl && settings.database_path) pathEl.textContent = settings.database_path;
+    if (recordsEl) recordsEl.textContent = settings.total_records.toLocaleString();
+    if (sizeEl) {
+      const bytes = settings.database_bytes || 0;
+      sizeEl.textContent = bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : `${Math.round(bytes / 1024)} KB`;
+    }
+  }
+
+  function switchView(view) {
+    currentActiveView = view;
+    const btnQuota = document.getElementById('nav-btn-quota');
+    const btnEgo = document.getElementById('nav-btn-ego');
+    const quotaSection = document.getElementById('quota-view-section');
+    const egoSection = document.getElementById('ego-view-section');
+    const heading = document.getElementById('page-main-heading');
+    const btnRefreshAll = document.getElementById('btn-refresh-all');
+
+    if (view === 'ego') {
+      if (btnQuota) btnQuota.classList.remove('active');
+      if (btnEgo) btnEgo.classList.add('active');
+      if (quotaSection) quotaSection.style.display = 'none';
+      if (egoSection) egoSection.style.display = 'flex';
+      if (heading) heading.textContent = 'Ego Analytics';
+      if (btnRefreshAll) btnRefreshAll.style.display = 'none';
+      loadEgoOverview();
+    } else {
+      if (btnQuota) btnQuota.classList.add('active');
+      if (btnEgo) btnEgo.classList.remove('active');
+      if (quotaSection) quotaSection.style.display = 'block';
+      if (egoSection) egoSection.style.display = 'none';
+      if (heading) heading.textContent = 'Quota Management';
+      if (btnRefreshAll) btnRefreshAll.style.display = 'inline-flex';
+    }
+  }
+
+  function initEgoListeners() {
+    const btnQuota = document.getElementById('nav-btn-quota');
+    const btnEgo = document.getElementById('nav-btn-ego');
+    if (btnQuota) btnQuota.addEventListener('click', () => switchView('quota'));
+    if (btnEgo) btnEgo.addEventListener('click', () => switchView('ego'));
+
+    // Range buttons
+    const rangeBtns = document.querySelectorAll('#ego-time-ranges .ego-btn-range');
+    rangeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        rangeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentEgoRange = btn.dataset.range || '24h';
+        loadEgoOverview();
+      });
+    });
+
+    // Refresh button
+    const btnRef = document.getElementById('ego-btn-refresh');
+    if (btnRef) btnRef.addEventListener('click', loadEgoOverview);
+
+    // Toggle active
+    const toggle = document.getElementById('ego-toggle-active');
+    if (toggle) {
+      toggle.addEventListener('change', async () => {
+        const enabled = toggle.checked;
+        try {
+          await egoApiFetch(`/settings?enabled=${enabled}`);
+          showToast(`Ingestion ${enabled ? 'habilitada' : 'pausada'}`, 'info');
+        } catch (e) {
+          showToast('Error al actualizar estado de ingestion', 'error');
+        }
+      });
+    }
+
+    // Prune button
+    const btnPrune = document.getElementById('ego-btn-prune');
+    if (btnPrune) {
+      btnPrune.addEventListener('click', async () => {
+        const sel = document.getElementById('ego-prune-days');
+        const days = parseInt(sel?.value || '30', 10);
+        if (!confirm(`¿Estás seguro de purgar registros de más de ${days} días?`)) return;
+
+        try {
+          const res = await egoApiFetch(`/prune?days=${days}`);
+          const data = await res.json();
+          showToast(`Se purgaron ${data.rows_deleted || 0} registros`, 'info');
+          loadEgoOverview();
+        } catch (e) {
+          showToast('Error purgando registros', 'error');
+        }
+      });
+    }
+
+    // Reset button
+    const btnReset = document.getElementById('ego-btn-reset');
+    if (btnReset) {
+      btnReset.addEventListener('click', async () => {
+        if (!confirm('⚠️ ¡PELIGRO! ¿Deseas vaciar por completo todas las estadísticas guardadas? Esta acción no se puede deshacer.')) return;
+        try {
+          await egoApiFetch('/reset');
+          showToast('Base de datos reiniciada con éxito', 'info');
+          loadEgoOverview();
+        } catch (e) {
+          showToast('Error reiniciando base de datos', 'error');
+        }
+      });
+    }
+
+    // Initial check for URL path: if URL ends with /ego, switch view directly
+    if (window.location.pathname.endsWith('/ego') || window.location.hash === '#ego') {
+      switchView('ego');
+    }
+  }
+
+  // Hook initEgoListeners into main init
+  const originalInit = init;
+  init = function() {
+    originalInit();
+    initEgoListeners();
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

@@ -194,8 +194,8 @@ func TestQuotaSummary_FilterByProvider(t *testing.T) {
 	summary := QuotaSummary{
 		TotalAccounts:  len(accounts),
 		ActiveAccounts: len(accounts),
-		Accounts:      accounts,
-		GeneratedAt:   time.Now(),
+		Accounts:       accounts,
+		GeneratedAt:    time.Now(),
 	}
 
 	t.Run("filter by claude", func(t *testing.T) {

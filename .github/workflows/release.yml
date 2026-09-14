@@ -100,9 +100,13 @@ jobs:
           # Check if release exists, create if not
           if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME not found, creating release..."
+            EXTRA_FLAGS="--generate-notes"
+            if [[ "$TAG_NAME" == *"-"* ]]; then
+              EXTRA_FLAGS="$EXTRA_FLAGS --prerelease"
+            fi
             gh release create "$TAG_NAME" \
               --title "Release $TAG_NAME" \
-              --generate-notes
+              $EXTRA_FLAGS
           fi
           
           gh release upload "$TAG_NAME" release-assets/* --clobber

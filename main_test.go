@@ -1,3 +1,5 @@
+//go:build cgo
+
 package main
 
 import (
@@ -91,7 +93,79 @@ func TestHandlePluginMethod(t *testing.T) {
 		t.Errorf("expected status code 200, got %d", respPayload.StatusCode)
 	}
 
-	// 4. Test unknown method
+	// 4. Test usage.handle hook
+	usageEvent := []byte(`{"Provider":"openai","Model":"gpt-4o","Detail":{"InputTokens":10,"OutputTokens":5}}`)
+	rawUsage, err := handlePluginMethod("usage.handle", usageEvent)
+	if err != nil {
+		t.Fatalf("usage.handle failed: %v", err)
+	}
+	var envUsage envelope
+	if err := json.Unmarshal(rawUsage, &envUsage); err != nil || !envUsage.OK {
+		t.Fatalf("expected OK envelope for usage.handle, got: %s", string(rawUsage))
+	}
+
+	// 5. Test management.handle for Ego API
+	reqEgoAPI := []byte(`{"Method":"GET","Path":"/v0/resource/plugins/control-account/ego/api/settings"}`)
+	rawEgo, err := handlePluginMethod("management.handle", reqEgoAPI)
+	if err != nil {
+		t.Fatalf("management.handle for Ego API failed: %v", err)
+	}
+	var envEgo envelope
+	if err := json.Unmarshal(rawEgo, &envEgo); err != nil || !envEgo.OK {
+		t.Fatalf("expected OK envelope for Ego API, got: %s", string(rawEgo))
+	}
+	var respEgo managementResponsePayload
+	if err := json.Unmarshal(envEgo.Result, &respEgo); err != nil || respEgo.StatusCode != 200 {
+		t.Fatalf("expected 200 from Ego API, got %d", respEgo.StatusCode)
+	}
+
+	// 6. Test management.handle for Ego API via ?api= query parameter
+	reqEgoQuery := managementRequestPayload{
+		Method: "GET",
+		Path:   "/v0/resource/plugins/control-account/ego",
+		Query:  map[string][]string{"api": {"settings"}},
+	}
+	reqEgoQueryJSON, err := json.Marshal(reqEgoQuery)
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	rawEgoQuery, err := handlePluginMethod("management.handle", reqEgoQueryJSON)
+	if err != nil {
+		t.Fatalf("management.handle for Ego API via query param failed: %v", err)
+	}
+	var envEgoQuery envelope
+	if err := json.Unmarshal(rawEgoQuery, &envEgoQuery); err != nil || !envEgoQuery.OK {
+		t.Fatalf("expected OK envelope for Ego API via query param, got: %s", string(rawEgoQuery))
+	}
+	var respEgoQuery managementResponsePayload
+	if err := json.Unmarshal(envEgoQuery.Result, &respEgoQuery); err != nil || respEgoQuery.StatusCode != 200 {
+		t.Fatalf("expected 200 from Ego API via query param, got %d", respEgoQuery.StatusCode)
+	}
+
+	// 7. Test management.handle for Ego API with encoded URI ?api=%2Fpricing
+	reqEgoEncoded := managementRequestPayload{
+		Method: "GET",
+		Path:   "/v0/resource/plugins/control-account-linux-amd64/ego",
+		Query:  map[string][]string{"api": {"%2Fpricing"}},
+	}
+	reqEgoEncodedJSON, err := json.Marshal(reqEgoEncoded)
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	rawEgoEncoded, err := handlePluginMethod("management.handle", reqEgoEncodedJSON)
+	if err != nil {
+		t.Fatalf("management.handle for encoded API failed: %v", err)
+	}
+	var envEgoEncoded envelope
+	if err := json.Unmarshal(rawEgoEncoded, &envEgoEncoded); err != nil || !envEgoEncoded.OK {
+		t.Fatalf("expected OK envelope for Ego API encoded, got: %s", string(rawEgoEncoded))
+	}
+	var respEgoEncoded managementResponsePayload
+	if err := json.Unmarshal(envEgoEncoded.Result, &respEgoEncoded); err != nil || respEgoEncoded.StatusCode != 200 {
+		t.Fatalf("expected 200 from Ego API encoded, got %d", respEgoEncoded.StatusCode)
+	}
+
+	// 8. Test unknown method
 	rawUnknown, err := handlePluginMethod("unknown.event", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

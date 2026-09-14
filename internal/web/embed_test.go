@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -307,5 +308,88 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 		if !strings.Contains(html, req) {
 			t.Errorf("expected index.html to contain identity requirement %q", req)
 		}
+	}
+}
+
+func TestEmbeddedDashboard_EgoTimelineChart(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	requiredElements := []string{
+		"ego-timeline-card",
+		"ego-chart-card",
+		"ego-chart-head",
+		"ego-chart-prompt-tokens",
+		"ego-chart-completion-tokens",
+		"ego-chart-peak-tokens",
+		"ego-chart-legend",
+		"ego-chart-svg",
+		"ego-chart-xaxis",
+		"ego-chart-tooltip",
+		"ego-chart-empty",
+		"renderEgoTimelineChart",
+		"zeroFillEgoTimeline",
+		"formatEgoTimelineLabel",
+		"ego-chart-bar-col",
+	}
+
+	for _, elem := range requiredElements {
+		if !strings.Contains(html, elem) {
+			t.Errorf("expected index.html to contain timeline component %q", elem)
+		}
+	}
+}
+
+func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	requiredElements := []string{
+		"Estimated Retail Value",
+		"ego-kpi-cost",
+		"ego-kpi-prompt-cost",
+		"ego-kpi-output-cost",
+		"formatUSD",
+		"estimated_cost_usd",
+		"Est. Value",
+	}
+
+	for _, elem := range requiredElements {
+		if !strings.Contains(html, elem) {
+			t.Errorf("expected index.html to contain retail pricing element %q", elem)
+		}
+	}
+}
+
+func TestEmbeddedDashboard_JavaScriptSyntax(t *testing.T) {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host, skipping JS syntax check")
+	}
+
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	start := strings.Index(html, "<script>")
+	end := strings.LastIndex(html, "</script>")
+	if start == -1 || end == -1 || start >= end {
+		t.Fatal("could not extract script block from index.html")
+	}
+
+	jsCode := html[start+len("<script>") : end]
+
+	cmd := exec.Command(nodePath, "-e", "new Function(process.argv[1]);", jsCode)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("embedded JavaScript has syntax error: %v\nOutput:\n%s", err, string(output))
 	}
 }
