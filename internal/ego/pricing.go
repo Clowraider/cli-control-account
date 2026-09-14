@@ -16,14 +16,14 @@ const DefaultLiteLLMPricingURL = "https://raw.githubusercontent.com/BerriAI/lite
 
 // DefaultCuratedPricing provides offline embedded rates per token in USD for mainstream models.
 var DefaultCuratedPricing = []ModelPricing{
-	// Claude Models (Anthropic)
-	{Model: "claude-3-7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003},
-	{Model: "claude-3.7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003},
-	{Model: "claude-3-5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003},
-	{Model: "claude-3.5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003},
-	{Model: "claude-3-5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008},
-	{Model: "claude-3.5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008},
-	{Model: "claude-3-opus", InputCostPerToken: 0.000015, OutputCostPerToken: 0.000075, CacheReadInputTokenCost: 0.0000015},
+	// Claude Models (Anthropic) - Cache creation is 1.25x input token cost
+	{Model: "claude-3-7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
+	{Model: "claude-3.7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
+	{Model: "claude-3-5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
+	{Model: "claude-3.5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
+	{Model: "claude-3-5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
+	{Model: "claude-3.5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
+	{Model: "claude-3-opus", InputCostPerToken: 0.000015, OutputCostPerToken: 0.000075, CacheReadInputTokenCost: 0.0000015, CacheCreationInputTokenCost: 0.00001875},
 
 	// OpenAI Models
 	{Model: "gpt-4o", InputCostPerToken: 0.0000025, OutputCostPerToken: 0.00001, CacheReadInputTokenCost: 0.00000125},
@@ -210,26 +210,78 @@ func FindModelPricing(pricingMap map[string]ModelPricing, modelName string) (Mod
 	return ModelPricing{Model: modelName}, false
 }
 
-// CalculateTokenCost calculates the retail cost equivalent in USD according to the formula:
-// (prompt - cached) * in_rate + cached * cache_rate + completion * out_rate
-func CalculateTokenCost(pricing ModelPricing, promptTokens, completionTokens, reasoningTokens, cachedTokens int64) (totalCost, promptCost, outputCost float64) {
-	uncachedPrompt := promptTokens - cachedTokens
-	if uncachedPrompt < 0 {
-		uncachedPrompt = 0
+// TokenAccountingSemantics defines the formula semantics used by different AI providers.
+type TokenAccountingSemantics uint8
+
+const (
+	SemanticsSubset TokenAccountingSemantics = iota
+	SemanticsIndependent
+	SemanticsSeparateReasoning
+)
+
+// ResolveTokenSemantics classifies provider accounting semantics according to CLIProxyAPI standards.
+func ResolveTokenSemantics(provider string) TokenAccountingSemantics {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	if strings.Contains(p, "claude") || strings.Contains(p, "anthropic") {
+		return SemanticsIndependent
+	}
+	for _, marker := range []string{"gemini", "aistudio", "antigravity", "vertex"} {
+		if strings.Contains(p, marker) {
+			return SemanticsSeparateReasoning
+		}
+	}
+	return SemanticsSubset
+}
+
+// CalculateTokenCost calculates the retail cost equivalent in USD according to provider semantics:
+// - independent (Claude): input is already uncached (not subtracting cached), reasoning is additive to completion, cache creation is 1.25x.
+// - separateReasoning (Gemini): input includes cache (subtracts cached), reasoning is additive to completion.
+// - subset (OpenAI/others): input includes cache, reasoning is a subset of completion (max).
+func CalculateTokenCost(pricing ModelPricing, provider string, promptTokens, completionTokens, reasoningTokens, cacheReadTokens, cacheCreationTokens int64) (totalCost, promptCost, outputCost float64) {
+	semantics := ResolveTokenSemantics(provider)
+
+	var uncachedPrompt int64
+	switch semantics {
+	case SemanticsIndependent:
+		uncachedPrompt = promptTokens
+		if uncachedPrompt < 0 {
+			uncachedPrompt = 0
+		}
+	default:
+		uncachedPrompt = promptTokens - (cacheReadTokens + cacheCreationTokens)
+		if uncachedPrompt < 0 {
+			uncachedPrompt = 0
+		}
 	}
 
-	cacheRate := pricing.CacheReadInputTokenCost
-	// If cache read rate is not explicitly set but input cost is, default cache rate is input cost
-	if cacheRate == 0 && pricing.InputCostPerToken > 0 {
-		cacheRate = pricing.InputCostPerToken
+	cacheReadRate := pricing.CacheReadInputTokenCost
+	if cacheReadRate == 0 && pricing.InputCostPerToken > 0 {
+		cacheReadRate = pricing.InputCostPerToken
 	}
 
-	outTokens := completionTokens
-	if outTokens < reasoningTokens {
-		outTokens = reasoningTokens
+	cacheCreationRate := pricing.CacheCreationInputTokenCost
+	if cacheCreationRate == 0 && pricing.InputCostPerToken > 0 {
+		if semantics == SemanticsIndependent {
+			cacheCreationRate = pricing.InputCostPerToken * 1.25
+		} else {
+			cacheCreationRate = pricing.InputCostPerToken
+		}
 	}
 
-	promptCost = (float64(uncachedPrompt) * pricing.InputCostPerToken) + (float64(cachedTokens) * cacheRate)
+	var outTokens int64
+	switch semantics {
+	case SemanticsIndependent, SemanticsSeparateReasoning:
+		outTokens = completionTokens + reasoningTokens
+	default: // Subset
+		outTokens = completionTokens
+		if outTokens < reasoningTokens {
+			outTokens = reasoningTokens
+		}
+	}
+
+	promptCost = (float64(uncachedPrompt) * pricing.InputCostPerToken) +
+		(float64(cacheReadTokens) * cacheReadRate) +
+		(float64(cacheCreationTokens) * cacheCreationRate)
 	outputCost = float64(outTokens) * pricing.OutputCostPerToken
 	totalCost = promptCost + outputCost
 

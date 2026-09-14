@@ -112,6 +112,7 @@ func (s *Storage) initSchema() error {
 		completion_tokens INTEGER NOT NULL DEFAULT 0,
 		reasoning_tokens INTEGER NOT NULL DEFAULT 0,
 		cached_tokens INTEGER NOT NULL DEFAULT 0,
+		cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
 		total_tokens INTEGER NOT NULL DEFAULT 0,
 		latency_ms INTEGER NOT NULL DEFAULT 0,
 		status TEXT NOT NULL
@@ -132,13 +133,20 @@ func (s *Storage) initSchema() error {
 			input_cost_per_token REAL NOT NULL DEFAULT 0.0,
 			output_cost_per_token REAL NOT NULL DEFAULT 0.0,
 			cache_read_input_token_cost REAL NOT NULL DEFAULT 0.0,
+			cache_creation_input_token_cost REAL NOT NULL DEFAULT 0.0,
 			updated_at INTEGER NOT NULL DEFAULT 0
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_ego_pricing_model ON ego_pricing(model);
 		`
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Auto-migrate ego_events table if cache_creation_tokens column doesn't exist
+	_, _ = s.db.Exec(`ALTER TABLE ego_events ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE ego_pricing ADD COLUMN cache_creation_input_token_cost REAL NOT NULL DEFAULT 0.0`)
+	return nil
 }
 
 // Close gracefully closes the database.
@@ -162,12 +170,13 @@ func (s *Storage) initPricing() error {
 
 	stmt, err := s.db.Prepare(`
 		INSERT INTO ego_pricing (
-			model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, updated_at
-		) VALUES (?, ?, ?, ?, ?)
+			model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, cache_creation_input_token_cost, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(model) DO UPDATE SET
 			input_cost_per_token = excluded.input_cost_per_token,
 			output_cost_per_token = excluded.output_cost_per_token,
 			cache_read_input_token_cost = excluded.cache_read_input_token_cost,
+			cache_creation_input_token_cost = excluded.cache_creation_input_token_cost,
 			updated_at = excluded.updated_at
 	`)
 	if err != nil {
@@ -177,7 +186,7 @@ func (s *Storage) initPricing() error {
 
 	now := time.Now().UnixMilli()
 	for _, p := range DefaultCuratedPricing {
-		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, now); err != nil {
+		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
 			return fmt.Errorf("failed to seed curated pricing: %w", err)
 		}
 	}
@@ -186,7 +195,7 @@ func (s *Storage) initPricing() error {
 }
 
 func (s *Storage) loadPricingCacheLocked() error {
-	rows, err := s.db.Query("SELECT model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, updated_at FROM ego_pricing")
+	rows, err := s.db.Query("SELECT model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, cache_creation_input_token_cost, updated_at FROM ego_pricing")
 	if err != nil {
 		return fmt.Errorf("failed to query ego pricing: %w", err)
 	}
@@ -195,7 +204,7 @@ func (s *Storage) loadPricingCacheLocked() error {
 	cache := make(map[string]ModelPricing)
 	for rows.Next() {
 		var p ModelPricing
-		if err := rows.Scan(&p.Model, &p.InputCostPerToken, &p.OutputCostPerToken, &p.CacheReadInputTokenCost, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.Model, &p.InputCostPerToken, &p.OutputCostPerToken, &p.CacheReadInputTokenCost, &p.CacheCreationInputTokenCost, &p.UpdatedAt); err != nil {
 			return fmt.Errorf("failed to scan ego pricing row: %w", err)
 		}
 		cache[p.Model] = p
@@ -244,12 +253,13 @@ func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO ego_pricing (
-			model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, updated_at
-		) VALUES (?, ?, ?, ?, ?)
+			model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, cache_creation_input_token_cost, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(model) DO UPDATE SET
 			input_cost_per_token = excluded.input_cost_per_token,
 			output_cost_per_token = excluded.output_cost_per_token,
 			cache_read_input_token_cost = excluded.cache_read_input_token_cost,
+			cache_creation_input_token_cost = excluded.cache_creation_input_token_cost,
 			updated_at = excluded.updated_at
 	`)
 	if err != nil {
@@ -263,7 +273,7 @@ func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
 		if updated == 0 {
 			updated = now
 		}
-		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, updated); err != nil {
+		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, updated); err != nil {
 			return fmt.Errorf("failed to exec upsert pricing: %w", err)
 		}
 	}
@@ -295,9 +305,9 @@ func (s *Storage) InsertBatch(events []EgoEvent) error {
 	stmt, err := tx.Prepare(`
 		INSERT INTO ego_events (
 			timestamp, provider, model, account,
-			prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens,
+			prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_creation_tokens,
 			total_tokens, latency_ms, status
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch insert: %w", err)
@@ -307,7 +317,7 @@ func (s *Storage) InsertBatch(events []EgoEvent) error {
 	for _, e := range events {
 		_, err := stmt.Exec(
 			e.Timestamp, e.Provider, e.Model, e.Account,
-			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CachedTokens,
+			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CachedTokens, e.CacheCreationTokens,
 			e.TotalTokens, e.LatencyMs, e.Status,
 		)
 		if err != nil {
@@ -353,6 +363,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 			COALESCE(SUM(completion_tokens), 0),
 			COALESCE(SUM(reasoning_tokens), 0),
 			COALESCE(SUM(cached_tokens), 0),
+			COALESCE(SUM(cache_creation_tokens), 0),
 			COALESCE(AVG(latency_ms), 0.0),
 			COALESCE(MIN(latency_ms), 0),
 			COALESCE(MAX(latency_ms), 0),
@@ -378,6 +389,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		&stats.CompletionTokens,
 		&stats.ReasoningTokens,
 		&stats.CachedTokens,
+		&stats.CacheCreationTokens,
 		&stats.AvgLatencyMs,
 		&stats.MinLatencyMs,
 		&stats.MaxLatencyMs,
@@ -395,14 +407,16 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		stats.SuccessRate = 0.0
 	}
 
-	// Calculate estimated retail cost by aggregating token usage per model
+	// Calculate estimated retail cost by aggregating token usage per model and provider
 	costQuery := `
 		SELECT
 			model,
+			provider,
 			COALESCE(SUM(prompt_tokens), 0),
 			COALESCE(SUM(completion_tokens), 0),
 			COALESCE(SUM(reasoning_tokens), 0),
-			COALESCE(SUM(cached_tokens), 0)
+			COALESCE(SUM(cached_tokens), 0),
+			COALESCE(SUM(cache_creation_tokens), 0)
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
@@ -411,7 +425,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		costQuery += " AND provider = ?"
 		costArgs = append(costArgs, provider)
 	}
-	costQuery += " GROUP BY model"
+	costQuery += " GROUP BY model, provider"
 
 	costRows, err := s.db.Query(costQuery, costArgs...)
 	if err != nil {
@@ -421,14 +435,14 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 
 	var totalCost, promptCost, outputCost float64
 	for costRows.Next() {
-		var modelName string
-		var pTokens, cTokens, rTokens, cachedTokens int64
-		if err := costRows.Scan(&modelName, &pTokens, &cTokens, &rTokens, &cachedTokens); err != nil {
+		var modelName, provName string
+		var pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens int64
+		if err := costRows.Scan(&modelName, &provName, &pTokens, &cTokens, &rTokens, &cachedTokens, &cacheCreationTokens); err != nil {
 			return nil, fmt.Errorf("failed to scan model cost row: %w", err)
 		}
 
 		pricing, _ := FindModelPricing(s.pricingCache, modelName)
-		tot, inC, outC := CalculateTokenCost(pricing, pTokens, cTokens, rTokens, cachedTokens)
+		tot, inC, outC := CalculateTokenCost(pricing, provName, pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens)
 		totalCost += tot
 		promptCost += inC
 		outputCost += outC
@@ -574,6 +588,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 			COALESCE(SUM(completion_tokens), 0),
 			COALESCE(SUM(reasoning_tokens), 0),
 			COALESCE(SUM(cached_tokens), 0),
+			COALESCE(SUM(cache_creation_tokens), 0),
 			COALESCE(AVG(latency_ms), 0.0)
 		FROM ego_events
 		WHERE timestamp >= ?
@@ -594,7 +609,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 	rankings := make([]ModelRanking, 0)
 	for rows.Next() {
 		var r ModelRanking
-		var reasoningTokens, cachedTokens int64
+		var reasoningTokens, cachedTokens, cacheCreationTokens int64
 		if err := rows.Scan(
 			&r.Model,
 			&r.Provider,
@@ -604,6 +619,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 			&r.CompletionTokens,
 			&reasoningTokens,
 			&cachedTokens,
+			&cacheCreationTokens,
 			&r.AvgLatencyMs,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan model ranking: %w", err)
@@ -611,7 +627,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 		r.AvgLatencyMs = math.Round(r.AvgLatencyMs*10) / 10
 
 		pricing, _ := FindModelPricing(s.pricingCache, r.Model)
-		tot, _, _ := CalculateTokenCost(pricing, r.PromptTokens, r.CompletionTokens, reasoningTokens, cachedTokens)
+		tot, _, _ := CalculateTokenCost(pricing, r.Provider, r.PromptTokens, r.CompletionTokens, reasoningTokens, cachedTokens, cacheCreationTokens)
 		r.EstimatedCostUSD = math.Round(tot*10000) / 10000
 
 		rankings = append(rankings, r)

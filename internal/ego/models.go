@@ -38,39 +38,41 @@ type RawUsageRecord struct {
 
 // EgoEvent represents a persistent record stored in the local SQLite database.
 type EgoEvent struct {
-	ID               int64  `json:"id"`
-	Timestamp        int64  `json:"timestamp"` // Unix timestamp in milliseconds
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	Account          string `json:"account"`
-	PromptTokens     int64  `json:"prompt_tokens"`
-	CompletionTokens int64  `json:"completion_tokens"`
-	ReasoningTokens  int64  `json:"reasoning_tokens"`
-	CachedTokens     int64  `json:"cached_tokens"`
-	TotalTokens      int64  `json:"total_tokens"`
-	LatencyMs        int64  `json:"latency_ms"`
-	Status           string `json:"status"` // "success" or "failed"
+	ID                  int64  `json:"id"`
+	Timestamp           int64  `json:"timestamp"` // Unix timestamp in milliseconds
+	Provider            string `json:"provider"`
+	Model               string `json:"model"`
+	Account             string `json:"account"`
+	PromptTokens        int64  `json:"prompt_tokens"`
+	CompletionTokens    int64  `json:"completion_tokens"`
+	ReasoningTokens     int64  `json:"reasoning_tokens"`
+	CachedTokens        int64  `json:"cached_tokens"`
+	CacheCreationTokens int64  `json:"cache_creation_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
+	LatencyMs           int64  `json:"latency_ms"`
+	Status              string `json:"status"` // "success" or "failed"
 }
 
 // SummaryStats contains aggregated metrics for a specified time window.
 type SummaryStats struct {
-	TotalRequests    int64   `json:"total_requests"`
-	TotalSuccess     int64   `json:"total_success"`
-	TotalFailed      int64   `json:"total_failed"`
-	SuccessRate      float64 `json:"success_rate"`
-	TotalTokens      int64   `json:"total_tokens"`
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	ReasoningTokens  int64   `json:"reasoning_tokens"`
-	CachedTokens     int64   `json:"cached_tokens"`
-	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
-	InputCostUSD     float64 `json:"input_cost_usd"`
-	OutputCostUSD    float64 `json:"output_cost_usd"`
-	AvgLatencyMs     float64 `json:"avg_latency_ms"`
-	MinLatencyMs     int64   `json:"min_latency_ms"`
-	MaxLatencyMs     int64   `json:"max_latency_ms"`
-	EarliestTime     int64   `json:"earliest_time"`
-	LatestTime       int64   `json:"latest_time"`
+	TotalRequests       int64   `json:"total_requests"`
+	TotalSuccess        int64   `json:"total_success"`
+	TotalFailed         int64   `json:"total_failed"`
+	SuccessRate         float64 `json:"success_rate"`
+	TotalTokens         int64   `json:"total_tokens"`
+	PromptTokens        int64   `json:"prompt_tokens"`
+	CompletionTokens    int64   `json:"completion_tokens"`
+	ReasoningTokens     int64   `json:"reasoning_tokens"`
+	CachedTokens        int64   `json:"cached_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	EstimatedCostUSD    float64 `json:"estimated_cost_usd"`
+	InputCostUSD        float64 `json:"input_cost_usd"`
+	OutputCostUSD       float64 `json:"output_cost_usd"`
+	AvgLatencyMs        float64 `json:"avg_latency_ms"`
+	MinLatencyMs        int64   `json:"min_latency_ms"`
+	MaxLatencyMs        int64   `json:"max_latency_ms"`
+	EarliestTime        int64   `json:"earliest_time"`
+	LatestTime          int64   `json:"latest_time"`
 }
 
 // TimelinePoint represents a single data point in a time series chart.
@@ -111,11 +113,12 @@ type ModelRanking struct {
 
 // ModelPricing holds the retail pricing rates per token in USD for a model.
 type ModelPricing struct {
-	Model                   string  `json:"model"`
-	InputCostPerToken       float64 `json:"input_cost_per_token"`
-	OutputCostPerToken      float64 `json:"output_cost_per_token"`
-	CacheReadInputTokenCost float64 `json:"cache_read_input_token_cost"`
-	UpdatedAt               int64   `json:"updated_at,omitempty"`
+	Model                        string  `json:"model"`
+	InputCostPerToken            float64 `json:"input_cost_per_token"`
+	OutputCostPerToken           float64 `json:"output_cost_per_token"`
+	CacheReadInputTokenCost      float64 `json:"cache_read_input_token_cost"`
+	CacheCreationInputTokenCost float64 `json:"cache_creation_input_token_cost,omitempty"`
+	UpdatedAt                    int64   `json:"updated_at,omitempty"`
 }
 
 // AccountRanking aggregates metrics per account/credential.
