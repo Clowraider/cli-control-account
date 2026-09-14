@@ -215,3 +215,140 @@ func TestHandler_Endpoints(t *testing.T) {
 		t.Errorf("Expected 404 for GET /unknown, got %d", rw.Code)
 	}
 }
+
+func TestTransformToEgoEvent_CacheTokenAttribution(t *testing.T) {
+	// CachedTokens on the stored event is what storage feeds to CalculateTokenCost as
+	// cacheReadTokens, so it must carry cache *reads* only: cache creation is billed
+	// separately from CacheCreationTokens.
+	tests := []struct {
+		name                  string
+		provider              string
+		detail                RawUsageDetail
+		expectedCached        int64
+		expectedCacheCreation int64
+	}{
+		{
+			name:     "anthropic cold request: host echoes cache creation into CachedTokens",
+			provider: "claude",
+			detail: RawUsageDetail{
+				InputTokens:  1000,
+				OutputTokens: 500,
+				// CLIProxyAPI fills CachedTokens with CacheReadTokens and then, when there
+				// are no cache reads, overwrites it with CacheCreationTokens. Both fields
+				// end up carrying the same 50000 tokens, which were written once.
+				CachedTokens:        50000,
+				CacheReadTokens:     0,
+				CacheCreationTokens: 50000,
+				TotalTokens:         51500,
+			},
+			expectedCached:        0, // reads only; the echo must not be billed a second time
+			expectedCacheCreation: 50000,
+		},
+		{
+			name:     "anthropic warm request: pure cache read",
+			provider: "claude",
+			detail: RawUsageDetail{
+				InputTokens:         1000,
+				OutputTokens:        500,
+				CachedTokens:        50000,
+				CacheReadTokens:     50000,
+				CacheCreationTokens: 0,
+				TotalTokens:         51500,
+			},
+			expectedCached:        50000,
+			expectedCacheCreation: 0,
+		},
+		{
+			name:     "anthropic mixed request: cache read plus partial refresh",
+			provider: "claude",
+			detail: RawUsageDetail{
+				InputTokens:         1000,
+				OutputTokens:        500,
+				CachedTokens:        20000,
+				CacheReadTokens:     20000,
+				CacheCreationTokens: 5000,
+				TotalTokens:         26500,
+			},
+			expectedCached:        20000,
+			expectedCacheCreation: 5000,
+		},
+		{
+			name:     "subset provider reporting only the legacy CachedTokens field",
+			provider: "openai",
+			detail: RawUsageDetail{
+				InputTokens:         40000,
+				OutputTokens:        500,
+				CachedTokens:        30000,
+				CacheReadTokens:     0,
+				CacheCreationTokens: 0,
+				TotalTokens:         40500,
+			},
+			expectedCached:        30000, // no cache creation to confuse it with: keep the fallback
+			expectedCacheCreation: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := transformToEgoEvent(RawUsageRecord{
+				Provider:    tt.provider,
+				Model:       "test-model",
+				AuthID:      "test-account",
+				RequestedAt: time.Now(),
+				Detail:      tt.detail,
+			})
+
+			if event.CachedTokens != tt.expectedCached {
+				t.Errorf("expected cached tokens %d, got %d", tt.expectedCached, event.CachedTokens)
+			}
+			if event.CacheCreationTokens != tt.expectedCacheCreation {
+				t.Errorf("expected cache creation tokens %d, got %d", tt.expectedCacheCreation, event.CacheCreationTokens)
+			}
+		})
+	}
+}
+
+func TestTransformToEgoEvent_ColdCacheCostIsNotDoubleCounted(t *testing.T) {
+	pricing := ModelPricing{
+		Model:                       "claude-3-5-sonnet",
+		InputCostPerToken:           0.000003,   // $3 per 1M tokens
+		OutputCostPerToken:          0.000015,   // $15 per 1M tokens
+		CacheReadInputTokenCost:     0.0000003,  // $0.30 per 1M tokens
+		CacheCreationInputTokenCost: 0.00000375, // $3.75 per 1M tokens (1.25x)
+	}
+
+	event := transformToEgoEvent(RawUsageRecord{
+		Provider:    "claude",
+		Model:       "claude-3-5-sonnet",
+		AuthID:      "test-account",
+		RequestedAt: time.Now(),
+		Detail: RawUsageDetail{
+			InputTokens:         1000,
+			CachedTokens:        50000, // host echo of CacheCreationTokens on a cold request
+			CacheReadTokens:     0,
+			CacheCreationTokens: 50000,
+			TotalTokens:         51000,
+		},
+	})
+
+	// Storage passes EgoEvent.CachedTokens to CalculateTokenCost as cacheReadTokens.
+	_, promptCost, _ := CalculateTokenCost(
+		pricing,
+		"claude",
+		event.PromptTokens,
+		event.CompletionTokens,
+		event.ReasoningTokens,
+		event.CachedTokens,
+		event.CacheCreationTokens,
+	)
+
+	// uncached:      1000 * 0.000003    = 0.003
+	// cacheCreation: 50000 * 0.00000375 = 0.1875
+	// promptCost = 0.1905
+	// Billing the echo as a cache read as well would add 50000 * 0.0000003 = 0.015 -> 0.2055 (+7.9%).
+	const expectedPrompt = 0.1905
+	const tolerance = 1e-9
+	if diff := promptCost - expectedPrompt; diff > tolerance || diff < -tolerance {
+		t.Errorf("expected prompt cost %f, got %f (diff: %e)", expectedPrompt, promptCost, diff)
+	}
+}

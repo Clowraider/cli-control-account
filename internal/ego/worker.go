@@ -151,9 +151,14 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 	prompt := rec.Detail.InputTokens
 	completion := rec.Detail.OutputTokens
 	reasoning := rec.Detail.ReasoningTokens
-	cached := rec.Detail.CachedTokens
-	if cached == 0 {
-		cached = rec.Detail.CacheReadTokens
+	// cached must hold cache *reads* only: it is billed as a separate term from
+	// CacheCreationTokens. CLIProxyAPI echoes cache creation into CachedTokens when a
+	// request has no cache reads, so falling back to CachedTokens blindly would bill the
+	// cache-creation tokens twice on cold requests. Providers that only fill the legacy
+	// CachedTokens field still fall back to it.
+	cached := rec.Detail.CacheReadTokens
+	if cached == 0 && rec.Detail.CachedTokens != rec.Detail.CacheCreationTokens {
+		cached = rec.Detail.CachedTokens
 	}
 	cacheCreation := rec.Detail.CacheCreationTokens
 	total := rec.Detail.TotalTokens
