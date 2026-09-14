@@ -45,6 +45,22 @@ var DefaultCuratedPricing = []ModelPricing{
 	{Model: "deepseek-v3", InputCostPerToken: 0.00000014, OutputCostPerToken: 0.00000028, CacheReadInputTokenCost: 0.000000014},
 	{Model: "deepseek-reasoner", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
 	{Model: "deepseek-r1", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
+
+	// xAI (Grok) Models
+	{Model: "grok-2", InputCostPerToken: 0.000002, OutputCostPerToken: 0.00001},
+	{Model: "grok-2-mini", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000001},
+	{Model: "grok-beta", InputCostPerToken: 0.000005, OutputCostPerToken: 0.000015},
+
+	// Kimi / Moonshot Models
+	{Model: "moonshot-v1-8k", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000002},
+	{Model: "moonshot-v1-32k", InputCostPerToken: 0.000001, OutputCostPerToken: 0.000003},
+	{Model: "moonshot-v1-128k", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000005},
+	{Model: "kimi-k1.5", InputCostPerToken: 0.0000006, OutputCostPerToken: 0.000003},
+
+	// Qwen & Mistral
+	{Model: "qwen-2.5-coder-32b", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000002},
+	{Model: "mistral-large", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000006},
+	{Model: "codestral", InputCostPerToken: 0.0000003, OutputCostPerToken: 0.0000009},
 }
 
 var dateSuffixRegex = regexp.MustCompile(`-(?:20\d{2}[01]\d[0-3]\d|20\d{2}-[01]\d-[0-3]\d|\d{4})$`)
@@ -194,6 +210,61 @@ func FindModelPricing(pricingMap map[string]ModelPricing, modelName string) (Mod
 			}
 		}
 		if p, ok := pricingMap["deepseek-v3"]; ok {
+			return p, true
+		}
+	case strings.Contains(target, "grok"):
+		if strings.Contains(target, "mini") {
+			if p, ok := pricingMap["grok-2-mini"]; ok {
+				return p, true
+			}
+		}
+		if p, ok := pricingMap["grok-2"]; ok {
+			return p, true
+		}
+		if p, ok := pricingMap["grok-beta"]; ok {
+			return p, true
+		}
+	case strings.Contains(target, "kimi") || strings.Contains(target, "moonshot"):
+		if strings.Contains(target, "128k") {
+			if p, ok := pricingMap["moonshot-v1-128k"]; ok {
+				return p, true
+			}
+		}
+		if strings.Contains(target, "32k") {
+			if p, ok := pricingMap["moonshot-v1-32k"]; ok {
+				return p, true
+			}
+		}
+		if p, ok := pricingMap["moonshot-v1-8k"]; ok {
+			return p, true
+		}
+		if p, ok := pricingMap["kimi-k1.5"]; ok {
+			return p, true
+		}
+	case strings.Contains(target, "qwen"):
+		if strings.Contains(target, "coder") {
+			if p, ok := pricingMap["qwen-2.5-coder-32b"]; ok {
+				return p, true
+			}
+		}
+		if p, ok := pricingMap["qwen-plus"]; ok {
+			return p, true
+		}
+		if p, ok := pricingMap["qwen-turbo"]; ok {
+			return p, true
+		}
+	case strings.Contains(target, "mistral") || strings.Contains(target, "codestral"):
+		if strings.Contains(target, "codestral") {
+			if p, ok := pricingMap["codestral"]; ok {
+				return p, true
+			}
+		}
+		if strings.Contains(target, "small") {
+			if p, ok := pricingMap["mistral-small"]; ok {
+				return p, true
+			}
+		}
+		if p, ok := pricingMap["mistral-large"]; ok {
 			return p, true
 		}
 	}

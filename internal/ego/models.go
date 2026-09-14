@@ -109,6 +109,7 @@ type ModelRanking struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 	AvgLatencyMs     float64 `json:"avg_latency_ms"`
+	IsPriced         bool    `json:"is_priced"`
 }
 
 // ModelPricing holds the retail pricing rates per token in USD for a model.

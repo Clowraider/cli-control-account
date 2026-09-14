@@ -5096,7 +5096,7 @@ body {
         <td><span class="plan-badge">${escapeHtml(m.provider)}</span></td>
         <td class="ego-col-mono">${m.total_requests.toLocaleString()}</td>
         <td class="ego-col-mono" style="color:var(--brand-claude);">${formatCompactTokens(m.total_tokens)}</td>
-        <td class="ego-col-mono" style="color:var(--meter-text-green); font-weight:600;">${formatUSD(m.estimated_cost_usd)}</td>
+        <td class="ego-col-mono" style="color:var(--meter-text-green); font-weight:600;">${m.is_priced ? formatUSD(m.estimated_cost_usd) : '<span style="color:var(--text-quaternary);" title="Tarifa retail no catalogada">—</span>'}</td>
         <td class="ego-col-mono">${Math.round(m.avg_latency_ms)}ms</td>
       </tr>
     `).join('');
