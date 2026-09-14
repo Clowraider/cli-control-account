@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -21,6 +22,8 @@ type Storage struct {
 	pricingCache map[string]ModelPricing
 }
 
+var memCounter atomic.Uint64
+
 // OpenStorage initializes or opens an SQLite database with WAL mode and indices.
 func OpenStorage(path string) (*Storage, error) {
 	if path == "" {
@@ -30,14 +33,15 @@ func OpenStorage(path string) (*Storage, error) {
 	isMemory := path == ":memory:" || path == "file::memory:" || strings.Contains(path, "mode=memory")
 	if !isMemory {
 		dir := filepath.Dir(path)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create database directory: %w", err)
 		}
 	}
 
 	var dsn string
 	if isMemory {
-		dsn = "file:egomemory?mode=memory&cache=shared"
+		id := memCounter.Add(1)
+		dsn = fmt.Sprintf("file:egomemory%d?mode=memory&cache=shared", id)
 	} else {
 		separator := "?"
 		if strings.Contains(path, "?") {
@@ -69,6 +73,12 @@ func OpenStorage(path string) (*Storage, error) {
 	if err := s.initSchema(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize ego schema: %w", err)
+	}
+
+	if !isMemory {
+		_ = os.Chmod(path, 0600)
+		_ = os.Chmod(path+"-wal", 0600)
+		_ = os.Chmod(path+"-shm", 0600)
 	}
 
 	if err := s.initPricing(); err != nil {
@@ -382,7 +392,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 	if stats.TotalRequests > 0 {
 		stats.SuccessRate = math.Round((float64(stats.TotalSuccess)/float64(stats.TotalRequests))*1000) / 10
 	} else {
-		stats.SuccessRate = 100.0
+		stats.SuccessRate = 0.0
 	}
 
 	// Calculate estimated retail cost by aggregating token usage per model

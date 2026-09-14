@@ -2,6 +2,7 @@ package ego
 
 import (
 	"encoding/json"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -204,7 +205,9 @@ func (w *Worker) flushLoop() {
 			return
 		}
 		if w.storage != nil {
-			_ = w.storage.InsertBatch(batch)
+			if err := w.storage.InsertBatch(batch); err != nil {
+				log.Printf("ego worker: failed to insert batch of %d events: %v", len(batch), err)
+			}
 		}
 		batch = batch[:0]
 	}
