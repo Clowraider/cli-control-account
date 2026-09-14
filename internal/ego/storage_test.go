@@ -339,3 +339,42 @@ func TestStorage_GeminiFlashHighCost(t *testing.T) {
 		t.Errorf("Expected positive OutputCostUSD, got %f", summary.OutputCostUSD)
 	}
 }
+
+func TestStorage_PermissionsAndEmptySuccessRate(t *testing.T) {
+	tempDir := t.TempDir()
+	subDir := filepath.Join(tempDir, "sub_plugins")
+	dbPath := filepath.Join(subDir, "test_perms.db")
+
+	storage, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStorage failed: %v", err)
+	}
+	defer storage.Close()
+
+	dirInfo, err := os.Stat(subDir)
+	if err != nil {
+		t.Fatalf("Stat subDir failed: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0700 {
+		t.Errorf("Expected dir permissions 0700, got %o", perm)
+	}
+
+	fileInfo, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("Stat dbPath failed: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0600 {
+		t.Errorf("Expected file permissions 0600, got %o", perm)
+	}
+
+	summary, err := storage.GetSummary("24h", "all")
+	if err != nil {
+		t.Fatalf("GetSummary failed: %v", err)
+	}
+	if summary.TotalRequests != 0 {
+		t.Fatalf("Expected 0 total requests, got %d", summary.TotalRequests)
+	}
+	if summary.SuccessRate != 0.0 {
+		t.Errorf("Expected 0.0 SuccessRate for empty storage, got %f", summary.SuccessRate)
+	}
+}
