@@ -151,6 +151,9 @@ func (s *Storage) initSchema() error {
 
 // Close gracefully closes the database.
 func (s *Storage) Close() error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.db != nil {
@@ -161,6 +164,9 @@ func (s *Storage) Close() error {
 
 // Path returns the physical path of the database.
 func (s *Storage) Path() string {
+	if s == nil {
+		return ""
+	}
 	return s.dbPath
 }
 
@@ -168,7 +174,13 @@ func (s *Storage) initPricing() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stmt, err := s.db.Prepare(`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin pricing init transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
 		INSERT INTO ego_pricing (
 			model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, cache_creation_input_token_cost, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?)
@@ -185,10 +197,25 @@ func (s *Storage) initPricing() error {
 	defer stmt.Close()
 
 	now := time.Now().UnixMilli()
+
+	// 1. Seed base models from embedded LiteLLM pricing dataset (~4,300 models)
+	if embeddedModels, err := getEmbeddedPricing(); err == nil {
+		for _, p := range embeddedModels {
+			if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
+				return fmt.Errorf("failed to seed embedded pricing: %w", err)
+			}
+		}
+	}
+
+	// 2. Curated models override embedded ones (e.g. specific cache creation 1.25x for Claude, Gemini 3.8 variants)
 	for _, p := range DefaultCuratedPricing {
 		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
 			return fmt.Errorf("failed to seed curated pricing: %w", err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit pricing init transaction: %w", err)
 	}
 
 	return s.loadPricingCacheLocked()
@@ -215,6 +242,9 @@ func (s *Storage) loadPricingCacheLocked() error {
 
 // GetPricing finds the pricing for the specified model.
 func (s *Storage) GetPricing(model string) ModelPricing {
+	if s == nil {
+		return ModelPricing{Model: model}
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -224,6 +254,9 @@ func (s *Storage) GetPricing(model string) ModelPricing {
 
 // GetAllPricing returns a slice of all stored model pricing entries.
 func (s *Storage) GetAllPricing() []ModelPricing {
+	if s == nil {
+		return nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -236,6 +269,9 @@ func (s *Storage) GetAllPricing() []ModelPricing {
 
 // UpsertPricingBatch inserts or updates model pricing records in SQLite and refreshes the cache.
 func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("storage is nil or closed")
+	}
 	if len(pricing) == 0 {
 		return nil
 	}
@@ -287,6 +323,9 @@ func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
 
 // InsertBatch inserts multiple Ego events in a single transaction.
 func (s *Storage) InsertBatch(events []EgoEvent) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("storage is nil or closed")
+	}
 	if len(events) == 0 {
 		return nil
 	}
@@ -349,6 +388,9 @@ func calculateMinTimestamp(timeRange string) int64 {
 
 // GetSummary returns overall aggregated stats for the selected window and optional provider filter.
 func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, error) {
+	if s == nil || s.db == nil {
+		return &SummaryStats{}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -457,6 +499,9 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 
 // GetTimeline returns aggregated data points for time-series charts.
 func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoint, error) {
+	if s == nil || s.db == nil {
+		return []TimelinePoint{}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -523,6 +568,9 @@ func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoin
 
 // GetProviderRankings ranks providers by total tokens burned and shows latency metrics.
 func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, error) {
+	if s == nil || s.db == nil {
+		return []ProviderRanking{}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -574,6 +622,9 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 
 // GetModelRankings ranks models by total tokens burned.
 func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRanking, error) {
+	if s == nil || s.db == nil {
+		return []ModelRanking{}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -626,9 +677,10 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 		}
 		r.AvgLatencyMs = math.Round(r.AvgLatencyMs*10) / 10
 
-		pricing, _ := FindModelPricing(s.pricingCache, r.Model)
+		pricing, matched := FindModelPricing(s.pricingCache, r.Model)
 		tot, _, _ := CalculateTokenCost(pricing, r.Provider, r.PromptTokens, r.CompletionTokens, reasoningTokens, cachedTokens, cacheCreationTokens)
 		r.EstimatedCostUSD = math.Round(tot*10000) / 10000
+		r.IsPriced = matched && (pricing.InputCostPerToken > 0 || pricing.OutputCostPerToken > 0)
 
 		rankings = append(rankings, r)
 	}
@@ -638,6 +690,9 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 
 // GetAccountRankings ranks accounts by tokens burned.
 func (s *Storage) GetAccountRankings(timeRange string, provider string) ([]AccountRanking, error) {
+	if s == nil || s.db == nil {
+		return []AccountRanking{}, nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -690,6 +745,9 @@ func (s *Storage) GetAccountRankings(timeRange string, provider string) ([]Accou
 
 // PruneOlderThan deletes events older than the specified number of days.
 func (s *Storage) PruneOlderThan(days int) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, fmt.Errorf("storage is nil or closed")
+	}
 	if days <= 0 {
 		return 0, fmt.Errorf("days must be greater than zero")
 	}
@@ -707,6 +765,9 @@ func (s *Storage) PruneOlderThan(days int) (int64, error) {
 
 // ResetDatabase truncates the ego_events table.
 func (s *Storage) ResetDatabase() error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("storage is nil or closed")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -720,6 +781,9 @@ func (s *Storage) ResetDatabase() error {
 
 // GetDatabaseSize returns the current database file size in bytes.
 func (s *Storage) GetDatabaseSize() (int64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("storage is nil")
+	}
 	info, err := os.Stat(s.dbPath)
 	if err != nil {
 		return 0, err
@@ -729,6 +793,9 @@ func (s *Storage) GetDatabaseSize() (int64, error) {
 
 // GetTotalRecords returns the total row count in ego_events.
 func (s *Storage) GetTotalRecords() (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, fmt.Errorf("storage is nil or closed")
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

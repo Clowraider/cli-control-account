@@ -378,3 +378,152 @@ func TestStorage_PermissionsAndEmptySuccessRate(t *testing.T) {
 		t.Errorf("Expected 0.0 SuccessRate for empty storage, got %f", summary.SuccessRate)
 	}
 }
+
+func TestStorage_NilGuards(t *testing.T) {
+	var s *Storage
+
+	if p := s.Path(); p != "" {
+		t.Errorf("expected empty string from nil Storage.Path(), got %s", p)
+	}
+	if _, err := s.GetDatabaseSize(); err == nil {
+		t.Errorf("expected error from nil Storage.GetDatabaseSize()")
+	}
+	if _, err := s.GetTotalRecords(); err == nil {
+		t.Errorf("expected error from nil Storage.GetTotalRecords()")
+	}
+	if summary, err := s.GetSummary("24h", "all"); err != nil || summary == nil {
+		t.Errorf("expected empty summary without error from nil Storage.GetSummary(), got %v, %v", summary, err)
+	}
+	if timeline, err := s.GetTimeline("24h", "all"); err != nil || len(timeline) != 0 {
+		t.Errorf("expected empty timeline from nil Storage.GetTimeline()")
+	}
+	if rankings, err := s.GetProviderRankings("24h"); err != nil || len(rankings) != 0 {
+		t.Errorf("expected empty provider rankings from nil Storage.GetProviderRankings()")
+	}
+	if rankings, err := s.GetModelRankings("24h", "all"); err != nil || len(rankings) != 0 {
+		t.Errorf("expected empty model rankings from nil Storage.GetModelRankings()")
+	}
+	if rankings, err := s.GetAccountRankings("24h", "all"); err != nil || len(rankings) != 0 {
+		t.Errorf("expected empty account rankings from nil Storage.GetAccountRankings()")
+	}
+	if _, err := s.PruneOlderThan(30); err == nil {
+		t.Errorf("expected error from nil Storage.PruneOlderThan()")
+	}
+	if err := s.ResetDatabase(); err == nil {
+		t.Errorf("expected error from nil Storage.ResetDatabase()")
+	}
+	if err := s.Close(); err != nil {
+		t.Errorf("expected nil error from nil Storage.Close(), got %v", err)
+	}
+	if p := s.GetPricing("gpt-4o"); p.Model != "gpt-4o" {
+		t.Errorf("expected default model pricing from nil Storage.GetPricing()")
+	}
+	if list := s.GetAllPricing(); list != nil {
+		t.Errorf("expected nil list from nil Storage.GetAllPricing()")
+	}
+	if err := s.InsertBatch([]EgoEvent{{}}); err == nil {
+		t.Errorf("expected error from nil Storage.InsertBatch()")
+	}
+	if err := s.UpsertPricingBatch([]ModelPricing{{Model: "test"}}); err == nil {
+		t.Errorf("expected error from nil Storage.UpsertPricingBatch()")
+	}
+}
+
+func TestStorage_EmbeddedPricingCoverage(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_coverage.db")
+
+	storage, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStorage failed: %v", err)
+	}
+	defer storage.Close()
+
+	allPricing := storage.GetAllPricing()
+	if len(allPricing) < 3000 {
+		t.Errorf("expected over 3000 embedded pricing entries, got %d", len(allPricing))
+	}
+
+	testModels := []string{
+		"grok-2",
+		"grok-beta",
+		"moonshot-v1-8k",
+		"kimi-k1.5",
+		"qwen-2.5-coder-32b",
+		"mistral-large",
+		"claude-3-5-sonnet",
+		"gpt-4o",
+		"gemini-3.8-flash-high",
+	}
+
+	for _, m := range testModels {
+		p := storage.GetPricing(m)
+		if p.InputCostPerToken <= 0 {
+			t.Errorf("expected model %s to have positive input pricing, got %f", m, p.InputCostPerToken)
+		}
+	}
+}
+
+func TestStorage_IsPricedFlagInModelRankings(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_is_priced.db")
+
+	storage, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStorage failed: %v", err)
+	}
+	defer storage.Close()
+
+	now := time.Now().UnixMilli()
+	events := []EgoEvent{
+		{
+			Timestamp:        now,
+			Provider:         "xai",
+			Model:            "grok-2",
+			PromptTokens:     1000,
+			CompletionTokens: 500,
+			TotalTokens:      1500,
+			Status:           "success",
+		},
+		{
+			Timestamp:        now,
+			Provider:         "custom",
+			Model:            "my-custom-unlisted-local-model",
+			PromptTokens:     1000,
+			CompletionTokens: 500,
+			TotalTokens:      1500,
+			Status:           "success",
+		},
+	}
+
+	if err := storage.InsertBatch(events); err != nil {
+		t.Fatalf("InsertBatch failed: %v", err)
+	}
+
+	rankings, err := storage.GetModelRankings("24h", "all")
+	if err != nil {
+		t.Fatalf("GetModelRankings failed: %v", err)
+	}
+
+	if len(rankings) != 2 {
+		t.Fatalf("expected 2 model rankings, got %d", len(rankings))
+	}
+
+	for _, r := range rankings {
+		if r.Model == "grok-2" {
+			if !r.IsPriced {
+				t.Errorf("expected grok-2 to have IsPriced = true")
+			}
+			if r.EstimatedCostUSD <= 0 {
+				t.Errorf("expected grok-2 to have positive EstimatedCostUSD, got %f", r.EstimatedCostUSD)
+			}
+		} else if r.Model == "my-custom-unlisted-local-model" {
+			if r.IsPriced {
+				t.Errorf("expected unlisted custom model to have IsPriced = false")
+			}
+			if r.EstimatedCostUSD != 0 {
+				t.Errorf("expected unlisted custom model to have EstimatedCostUSD = 0, got %f", r.EstimatedCostUSD)
+			}
+		}
+	}
+}

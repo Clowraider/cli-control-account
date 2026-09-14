@@ -30,8 +30,12 @@ func GetWorker() *Worker {
 	workerOnce.Do(func() {
 		storage, err := OpenStorage("")
 		if err != nil {
-			// Fallback to in-memory if disk opening fails
-			storage, _ = OpenStorage(":memory:")
+			log.Printf("ego worker: failed to open persistent disk storage (%v); falling back to ephemeral in-memory SQLite", err)
+			var memErr error
+			storage, memErr = OpenStorage(":memory:")
+			if memErr != nil {
+				log.Printf("ego worker: critical: failed to open in-memory storage fallback: %v", memErr)
+			}
 		}
 
 		w := NewWorker(storage, 2048, 50, 250*time.Millisecond)
@@ -39,6 +43,8 @@ func GetWorker() *Worker {
 		if storage != nil {
 			val := storage.GetConfig("enabled", "true")
 			w.SetEnabled(val != "false")
+		} else {
+			w.SetEnabled(false)
 		}
 		w.Start()
 		globalWorker = w
