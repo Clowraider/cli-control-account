@@ -425,6 +425,14 @@ func TestEmbeddedDashboard_RobustnessAndHardening(t *testing.T) {
 	if !strings.Contains(html, ".fill.no-data") {
 		t.Fatal("expected index.html to contain .fill.no-data CSS class")
 	}
+
+	// Issue #35: xAI token consumption warnings and unattended refresh protections
+	if !strings.Contains(html, ".xai-token-warn-badge") || !strings.Contains(html, ".xai-token-warn-note") {
+		t.Fatal("expected index.html to contain xAI token warning CSS classes")
+	}
+	if !strings.Contains(html, "document.hidden") {
+		t.Fatal("expected index.html auto-refresh loop to check document.hidden")
+	}
 }
 
 func TestEmbeddedDashboard_EgoAuthHandlingAndCleanups(t *testing.T) {

@@ -691,6 +691,46 @@ body {
   transform: scale(0.97);
 }
 
+.xai-token-warn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--meter-text-critical);
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.28);
+  letter-spacing: 0.01em;
+  line-height: 14px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xai-token-warn-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--meter-text-critical);
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(248, 81, 73, 0.08);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+  line-height: 1.3;
+  box-sizing: border-box;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Groups */
 .quota-group {
   display: flex;
@@ -2227,13 +2267,18 @@ body {
     setupTabListeners();
     setupSortListener();
     setupModalListeners();
-    btnRefreshAll.addEventListener('click', refreshAll);
+    btnRefreshAll.addEventListener('click', () => refreshAll(true));
     const btnCheck = document.getElementById('btn-check-update');
     if (btnCheck) {
       btnCheck.addEventListener('click', checkForPluginUpdates);
     }
     loadAuthFiles();
-    setInterval(refreshAll, 180000);
+    setInterval(() => {
+      if (document.hidden || currentActiveView !== 'quota') {
+        return;
+      }
+      refreshAll(false);
+    }, 180000);
     setInterval(updateCountdownTickers, 30000);
   }
 
@@ -2525,8 +2570,8 @@ body {
       renderThroughputPanel();
       render();
 
-      // Trigger quota fetch for each credential
-      refreshAll();
+      // Trigger quota fetch for each credential (unattended/initial)
+      refreshAll(false);
     } catch (err) {
       console.error('Error in loadAuthFiles:', err);
       if (err.message === '401_UNAUTHORIZED') {
@@ -2629,19 +2674,25 @@ body {
     if (el) el.textContent = loaded;
   }
 
-  function refreshAll() {
+  let isRefreshingAll = false;
+
+  function refreshAll(isManual = false) {
+    if (isRefreshingAll) return;
+    isRefreshingAll = true;
+
     const icon = document.getElementById('refresh-all-icon');
     if (icon) icon.classList.add('spinning');
 
     const activeFiles = authFiles.filter(f => !f.disabled);
-    const promises = activeFiles.map(file => fetchFileQuota(file));
+    const promises = activeFiles.map(file => fetchFileQuota(file, isManual));
     Promise.allSettled(promises).finally(() => {
+      isRefreshingAll = false;
       if (icon) icon.classList.remove('spinning');
       updateLoadedCount();
     });
   }
 
-  async function fetchFileQuota(file) {
+  async function fetchFileQuota(file, isManual = false) {
     const fileName = file.name;
     quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
     render();
@@ -2661,7 +2712,7 @@ body {
         await fetchKimiQuota(file, authIndex);
       } else if (provider === 'xai') {
         // Live quota via Management api-call → GET cli-chat-proxy.grok.com/v1/billing
-        await fetchXaiQuota(file, authIndex);
+        await fetchXaiQuota(file, authIndex, isManual);
       } else {
         quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
       }
@@ -2672,6 +2723,9 @@ body {
         error: err?.message || 'Failed to fetch live quota from upstream',
       };
     } finally {
+      if (quotaStore[fileName]) {
+        quotaStore[fileName].loading = false;
+      }
       render();
       updateLoadedCount();
     }
@@ -3751,7 +3805,7 @@ body {
     return parseXaiBilling(call.body);
   }
 
-  async function fetchXaiQuota(file, authIndex) {
+  async function fetchXaiQuota(file, authIndex, isManual = false) {
     // Headers match official grok-cli / CPAMC. The "(macos; aarch64)" token is
     // grok-cli's client fingerprint, not the plugin GOOS. Linux .so builds must
     // keep this User-Agent: xAI billing (cli-chat-proxy.grok.com) may 403 if it
@@ -3842,7 +3896,33 @@ body {
       }
     } catch (e) {}
 
-    // Fallback: Verify if this is an active paid account via xAI chat ping (matching CPAMC core)
+    // Fallback: Verify if this is an active paid account via xAI chat ping (matching CPAMC core).
+    // Issue #35: Do NOT send billable chat completions on unattended auto-refresh.
+    if (!isManual) {
+      if (quotaStore[file.name] && quotaStore[file.name].groups && quotaStore[file.name].groups.length > 0) {
+        quotaStore[file.name].loading = false;
+        return;
+      }
+      quotaStore[file.name] = {
+        loading: false,
+        plan: 'Paid',
+        isPayAsYouGo: true,
+        groups: [{
+          title: 'GROK / XAI',
+          models: 'Grok',
+          rows: [{
+            label: 'Paid API',
+            percent: 100,
+            percentLabel: 'Active (Pay-as-you-go)',
+            resetLabel: 'Manual refresh to verify',
+            warning: false,
+          }],
+        }],
+        error: null,
+      };
+      return;
+    }
+
     try {
       const pingRes = await apiFetch('/v0/management/api-call', {
         method: 'POST',
@@ -3870,6 +3950,7 @@ body {
           quotaStore[file.name] = {
             loading: false,
             plan: 'Paid',
+            isPayAsYouGo: true,
             groups: [{
               title: 'GROK / XAI',
               models: 'Grok',
@@ -3889,6 +3970,7 @@ body {
           quotaStore[file.name] = {
             loading: false,
             plan: 'Paid',
+            isPayAsYouGo: true,
             groups: [],
             error: `xAI API error (${call.status}): ${errMsg}`,
           };
@@ -3899,6 +3981,7 @@ body {
       quotaStore[file.name] = {
         loading: false,
         plan: 'Paid',
+        isPayAsYouGo: true,
         groups: [],
         error: `xAI health check failed: ${pingErr.message || pingErr}`,
       };
@@ -4424,7 +4507,7 @@ body {
     sorted.forEach(file => {
       const btn = document.getElementById(`btn-ref-${file.name}`);
       if (btn) {
-        btn.addEventListener('click', () => fetchFileQuota(file));
+        btn.addEventListener('click', () => fetchFileQuota(file, true));
       }
 
       const switchInput = document.getElementById(`toggle-status-${file.name}`);
@@ -4527,6 +4610,11 @@ body {
               </div>
             </div>
           `;}).join('')}
+          ${(quota.isPayAsYouGo || (provider === 'xai' && quota.plan === 'Paid')) ? `
+            <div class="xai-token-warn-note" title="La actualización de cuota consume tokens en xAI">
+              ⚠️ La actualización de cuota consume tokens
+            </div>
+          ` : ''}
         </div>
       `).join('');
     } else {
@@ -4548,12 +4636,18 @@ body {
       ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount} reset credit${resetCreditsCount > 1 ? 's' : ''}</button>`
       : '';
 
-    const planHtml = (planLabel || resetCreditsBadge) ? `
+    const isPayAsYouGo = quota.isPayAsYouGo || (provider === 'xai' && quota.plan === 'Paid');
+    const xaiWarnBadge = isPayAsYouGo
+      ? `<span class="xai-token-warn-badge" title="La actualización de cuota consume tokens">⚠️ Consume tokens</span>`
+      : '';
+
+    const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo) ? `
           <div class="plan-row">
             <span>${planLabel ? 'Plan' : 'Credits'}</span>
             <div class="plan-badges">
               ${planLabel ? `<span class="plan-badge">${escapeHtml(planLabel)}</span>` : ''}
               ${resetCreditsBadge}
+              ${xaiWarnBadge}
             </div>
           </div>` : '';
 

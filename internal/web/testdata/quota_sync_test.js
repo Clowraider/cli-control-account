@@ -37,6 +37,9 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     formatResetInfo,
     formatDuration,
     renderCard,
+    fetchXaiQuota,
+    fetchFileQuota,
+    refreshAll,
     quotaStore,
     compareSemver,
     checkForPluginUpdates,
@@ -104,6 +107,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     TextDecoder,
     TextEncoder,
     Buffer,
+    AbortController: globalThis.AbortController,
     setTimeout: wrappedSetTimeout,
     clearTimeout: wrappedClearTimeout,
     atob: str => Buffer.from(str, 'base64').toString('utf8'),
@@ -579,4 +583,64 @@ test('checkForPluginUpdates triggers API call, handles "Update available" (sets 
   assert.equal(btn3.classList.contains('update-error'), false, 'should revert update-error class');
   assert.equal(icon3.textContent, '↻');
   assert.equal(text3.textContent, 'Check update');
+});
+
+test('xAI auto-refresh does not call chat/completions ping unattended and renders token warning in card', async () => {
+  const calls = [];
+  const mockFetch = async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/v0/management/api-call') {
+      const parsed = JSON.parse(options.body);
+      if (parsed.url && parsed.url.includes('billing')) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ ok: false, status: 404 }),
+        };
+      }
+      if (parsed.url && parsed.url.includes('chat/completions')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            status: 200,
+            body: { choices: [{ message: { content: 'pong' } }] },
+          }),
+        };
+      }
+    }
+    return { ok: false, status: 500 };
+  };
+
+  const dashboard = loadDashboard(mockFetch, '1.0.0');
+  const xaiFile = {
+    name: 'xai-test.json',
+    type: 'xai',
+    auth_index: 'xai-1',
+  };
+
+  // 1. Unattended / auto-refresh (isManual = false)
+  await dashboard.fetchXaiQuota(xaiFile, 'xai-1', false);
+  const chatCallsAuto = calls.filter(c => {
+    if (c.url !== '/v0/management/api-call') return false;
+    const body = JSON.parse(c.options.body);
+    return body.url && body.url.includes('chat/completions');
+  });
+  assert.equal(chatCallsAuto.length, 0, 'auto-refresh must not send billable chat/completions pings');
+
+  // Verify card rendering contains token warning badge and note
+  const renderedHtml = dashboard.renderCard(xaiFile);
+  assert.ok(renderedHtml.includes('xai-token-warn-badge'), 'card must include xai-token-warn-badge');
+  assert.ok(renderedHtml.includes('xai-token-warn-note'), 'card must include xai-token-warn-note');
+  assert.ok(renderedHtml.includes('Consume tokens') || renderedHtml.includes('consume tokens'), 'card must state token consumption warning');
+
+  // 2. Manual refresh (isManual = true)
+  await dashboard.fetchXaiQuota(xaiFile, 'xai-1', true);
+  const chatCallsManual = calls.filter(c => {
+    if (c.url !== '/v0/management/api-call') return false;
+    const body = JSON.parse(c.options.body);
+    return body.url && body.url.includes('chat/completions');
+  });
+  assert.equal(chatCallsManual.length, 1, 'manual refresh should trigger verification ping when billing fails');
 });
