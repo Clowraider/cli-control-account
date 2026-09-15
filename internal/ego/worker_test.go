@@ -395,17 +395,36 @@ func TestTransformToEgoEvent_TotalTokensFallback(t *testing.T) {
 			expectedTotal: 1700, // 1000 + 500 + 200
 		},
 		{
-			name:     "independent (claude): prompt + cached + cacheCreation + completion + reasoning when total is 0",
+			name:     "independent (claude): prompt + cached + cacheCreation + completion when total is 0",
 			provider: "claude",
 			detail: RawUsageDetail{
 				InputTokens:         1000,
-				OutputTokens:        500,
+				OutputTokens:        500, // already includes the 200 thinking tokens
 				ReasoningTokens:     200,
 				CacheReadTokens:     5000,
 				CacheCreationTokens: 2000,
 				TotalTokens:         0,
 			},
-			expectedTotal: 8700, // 1000 + 5000 + 2000 + 500 + 200
+			expectedTotal: 8500, // 1000 + 5000 + 2000 + 500 (output counted once)
+		},
+		{
+			// Payload copied verbatim from the CLIProxyAPI host test
+			// TestParseClaudeUsagePreservesThinkingTokensAsReasoningSubset
+			// (internal/runtime/executor/helps/usage_helpers_test.go):
+			//   {"input_tokens":2,"cache_creation_input_tokens":831,"cache_read_input_tokens":44225,
+			//    "output_tokens":244,"output_tokens_details":{"thinking_tokens":40}}
+			// The host computes TotalTokens = input + output + cacheRead + cacheCreation = 45302.
+			name:     "independent (claude): host payload totals match, thinking not added twice",
+			provider: "claude",
+			detail: RawUsageDetail{
+				InputTokens:         2,
+				OutputTokens:        244,
+				ReasoningTokens:     40,
+				CacheReadTokens:     44225,
+				CacheCreationTokens: 831,
+				TotalTokens:         0,
+			},
+			expectedTotal: 45302, // 2 + 244 + 44225 + 831 (not 45342)
 		},
 		{
 			name:         "openai-compatible-claude: uses subset semantics when total is 0",

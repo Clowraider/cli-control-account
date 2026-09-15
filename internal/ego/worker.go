@@ -178,7 +178,10 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 		semantics := ResolveTokenSemantics(provider, rec.ExecutorType)
 		switch semantics {
 		case SemanticsIndependent:
-			total = prompt + cached + cacheCreation + completion + reasoning
+			// Claude: output_tokens already includes thinking and the cache fields are
+			// independent from input_tokens, so the total counts output once. Mirrors
+			// the host (usage_helpers.go): input + output + cacheRead + cacheCreation.
+			total = prompt + cached + cacheCreation + completion
 		case SemanticsSeparateReasoning:
 			total = prompt + completion + reasoning
 		default: // SemanticsSubset
