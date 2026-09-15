@@ -185,19 +185,44 @@ func TestPricing_CalculateCostFormula(t *testing.T) {
 			name:                "claude independent: input is uncached count, cache read and creation are additive",
 			provider:            "claude",
 			promptTokens:        1000, // already uncached
-			completionTokens:    500,
-			reasoningTokens:     200, // additive to completion
+			completionTokens:    500,  // already includes the 200 thinking tokens
+			reasoningTokens:     200,  // subset of completion, not additive
 			cacheReadTokens:     50000,
 			cacheCreationTokens: 1000,
 			// uncached: 1000 * 0.000003 = 0.003
 			// cacheRead: 50000 * 0.0000003 = 0.015
 			// cacheCreation: 1000 * 0.00000375 = 0.00375
 			// promptCost = 0.02175
-			// output: (500 + 200) * 0.000015 = 0.0105
-			// totalCost = 0.03225
+			// output: 500 * 0.000015 = 0.0075 (thinking is already inside output_tokens)
+			// totalCost = 0.02925
 			expectedPrompt: 0.02175,
-			expectedOutput: 0.0105,
-			expectedTotal:  0.03225,
+			expectedOutput: 0.0075,
+			expectedTotal:  0.02925,
+		},
+		{
+			// Regression for the thinking double-count: payload copied verbatim from the
+			// CLIProxyAPI host test TestParseClaudeUsagePreservesThinkingTokensAsReasoningSubset
+			// (internal/runtime/executor/helps/usage_helpers_test.go), itself sanitized from
+			// real Anthropic logs:
+			//   {"input_tokens":2,"cache_creation_input_tokens":831,"cache_read_input_tokens":44225,
+			//    "output_tokens":244,"output_tokens_details":{"thinking_tokens":40}}
+			// The host asserts OutputTokens=244 / ReasoningTokens=40, i.e. thinking is a subset.
+			name:                "claude independent: thinking tokens are not billed twice (host payload)",
+			provider:            "claude",
+			promptTokens:        2,
+			completionTokens:    244,
+			reasoningTokens:     40,
+			cacheReadTokens:     44225,
+			cacheCreationTokens: 831,
+			// uncached: 2 * 0.000003 = 0.000006
+			// cacheRead: 44225 * 0.0000003 = 0.0132675
+			// cacheCreation: 831 * 0.00000375 = 0.00311625
+			// promptCost = 0.01638975
+			// output: 244 * 0.000015 = 0.00366 (NOT (244 + 40) * 0.000015 = 0.00426)
+			// totalCost = 0.02004975
+			expectedPrompt: 0.01638975,
+			expectedOutput: 0.00366,
+			expectedTotal:  0.02004975,
 		},
 		{
 			name:                "gemini separateReasoning: prompt includes cache, reasoning is additive",

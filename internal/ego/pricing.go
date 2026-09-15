@@ -317,7 +317,7 @@ func ResolveTokenSemantics(provider string, executorType ...string) TokenAccount
 }
 
 // CalculateTokenCost calculates the retail cost equivalent in USD according to provider semantics:
-// - independent (Claude): input is already uncached (not subtracting cached), reasoning is additive to completion, cache creation is 1.25x.
+// - independent (Claude): input is already uncached (not subtracting cached), reasoning is a subset of completion (output_tokens already includes thinking), cache creation is 1.25x.
 // - separateReasoning (Gemini): input includes cache (subtracts cached), reasoning is additive to completion.
 // - subset (OpenAI/others): input includes cache, reasoning is a subset of completion (max).
 func CalculateTokenCost(pricing ModelPricing, provider string, promptTokens, completionTokens, reasoningTokens, cacheReadTokens, cacheCreationTokens int64) (totalCost, promptCost, outputCost float64) {
@@ -353,7 +353,15 @@ func CalculateTokenCost(pricing ModelPricing, provider string, promptTokens, com
 
 	var outTokens int64
 	switch semantics {
-	case SemanticsIndependent, SemanticsSeparateReasoning:
+	case SemanticsIndependent:
+		// Anthropic reports thinking as a subset of output_tokens, so completion
+		// already contains the reasoning tokens (CLIProxyAPI host, see
+		// internal/runtime/executor/helps/usage_helpers.go: "raw output_tokens
+		// already includes thinking"). Adding reasoning here would bill it twice.
+		outTokens = completionTokens
+	case SemanticsSeparateReasoning:
+		// Gemini family: candidatesTokenCount and thoughtsTokenCount are disjoint,
+		// so reasoning really is additive to completion.
 		outTokens = completionTokens + reasoningTokens
 	default: // Subset
 		outTokens = completionTokens
