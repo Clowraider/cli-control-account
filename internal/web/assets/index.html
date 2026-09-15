@@ -3127,31 +3127,36 @@ body {
 
     function processWindow(windowObj, defaultLabel, limitReached, allowed) {
       if (!windowObj && limitReached === undefined && allowed === undefined) return null;
-      let usedPercent = null;
+      let usedPercentRaw = null;
       if (windowObj) {
-        usedPercent = windowObj.used_percent !== undefined ? windowObj.used_percent : windowObj.usedPercent;
-        if (typeof usedPercent === 'string') usedPercent = parseFloat(usedPercent);
+        usedPercentRaw = windowObj.used_percent !== undefined ? windowObj.used_percent : windowObj.usedPercent;
+        if (typeof usedPercentRaw === 'string') usedPercentRaw = parseFloat(usedPercentRaw);
       }
 
       const resetAt = windowObj?.reset_at ?? windowObj?.resetAt;
       const resetAfter = windowObj?.reset_after_seconds ?? windowObj?.resetAfterSeconds;
       const resetInfo = formatResetInfo(resetAt, resetAfter);
 
+      // Parity with CPAMC (src/features/quota/providers/codex/data.ts):
+      // const isLimitReached = Boolean(limitReached) || allowed === false;
+      // const usedPercent = usedPercentRaw ?? (isLimitReached && resetLabel !== '-' ? 100 : null);
+      const isLimitReached = Boolean(limitReached) || allowed === false;
+      const hasReset = Boolean(resetInfo.ms);
+      const usedPercent = (typeof usedPercentRaw === 'number' && !isNaN(usedPercentRaw))
+        ? usedPercentRaw
+        : (isLimitReached && hasReset ? 100 : null);
+
       let remaining = null;
       let percentLabel = 'No data';
       let resetLabel = resetInfo.ms ? resetInfo.label : 'No quota data';
       let warning = false;
 
-      if (limitReached === true || allowed === false) {
-        remaining = 0;
-        percentLabel = '0% remaining';
-        resetLabel = resetInfo.label;
-        warning = true;
-      } else if (typeof usedPercent === 'number' && !isNaN(usedPercent)) {
+      if (usedPercent !== null) {
+        const clampedUsed = Math.max(0, Math.min(100, usedPercent));
         remaining = Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
         percentLabel = remaining === 100 ? 'Quota available' : `${remaining}% remaining`;
         resetLabel = remaining === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
-        warning = remaining < 20;
+        warning = remaining < 20 || (isLimitReached && remaining === 0);
       }
 
       return {
