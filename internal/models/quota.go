@@ -103,10 +103,10 @@ func SanitizePrefix(s string) string {
 
 // QuotaSummary represents an aggregated response of multiple accounts and their quota.
 type QuotaSummary struct {
-	TotalAccounts int            `json:"total_accounts"`
-	ActiveAccounts int           `json:"active_accounts"`
-	Accounts      []AccountQuota `json:"accounts"`
-	GeneratedAt   time.Time      `json:"generated_at"`
+	TotalAccounts  int            `json:"total_accounts"`
+	ActiveAccounts int            `json:"active_accounts"`
+	Accounts       []AccountQuota `json:"accounts"`
+	GeneratedAt    time.Time      `json:"generated_at"`
 }
 
 // FilterByProvider returns a new slice containing only accounts matching the given provider.

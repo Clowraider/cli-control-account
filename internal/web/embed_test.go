@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -307,5 +308,189 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 		if !strings.Contains(html, req) {
 			t.Errorf("expected index.html to contain identity requirement %q", req)
 		}
+	}
+}
+
+func TestEmbeddedDashboard_EgoTimelineChart(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	requiredElements := []string{
+		"ego-timeline-card",
+		"ego-chart-card",
+		"ego-chart-head",
+		"ego-chart-prompt-tokens",
+		"ego-chart-completion-tokens",
+		"ego-chart-peak-tokens",
+		"ego-chart-legend",
+		"ego-chart-svg",
+		"ego-chart-xaxis",
+		"ego-chart-tooltip",
+		"ego-chart-empty",
+		"renderEgoTimelineChart",
+		"zeroFillEgoTimeline",
+		"formatEgoTimelineLabel",
+		"ego-chart-bar-col",
+	}
+
+	for _, elem := range requiredElements {
+		if !strings.Contains(html, elem) {
+			t.Errorf("expected index.html to contain timeline component %q", elem)
+		}
+	}
+}
+
+func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	requiredElements := []string{
+		"Estimated Retail Value",
+		"ego-kpi-cost",
+		"ego-kpi-prompt-cost",
+		"ego-kpi-output-cost",
+		"formatUSD",
+		"estimated_cost_usd",
+		"Est. Value",
+	}
+
+	for _, elem := range requiredElements {
+		if !strings.Contains(html, elem) {
+			t.Errorf("expected index.html to contain retail pricing element %q", elem)
+		}
+	}
+}
+
+func TestEmbeddedDashboard_JavaScriptSyntax(t *testing.T) {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host, skipping JS syntax check")
+	}
+
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	start := strings.Index(html, "<script>")
+	end := strings.LastIndex(html, "</script>")
+	if start == -1 || end == -1 || start >= end {
+		t.Fatal("could not extract script block from index.html")
+	}
+
+	jsCode := html[start+len("<script>") : end]
+
+	cmd := exec.Command(nodePath, "--check")
+	cmd.Stdin = strings.NewReader(jsCode)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("embedded JavaScript has syntax error: %v\nOutput:\n%s", err, string(output))
+	}
+}
+
+func TestEmbeddedDashboard_CardActivityAndQuotaRefresh(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// refreshFileStats should query /v0/management/auth-files?name=
+	if !strings.Contains(html, "function refreshFileStats") {
+		t.Fatal("expected index.html to define refreshFileStats")
+	}
+	if !strings.Contains(html, "apiFetch(`/v0/management/auth-files?name=${encodeURIComponent(file.name)}`)") {
+		t.Fatal("expected refreshFileStats to query auth-files with filename parameter")
+	}
+
+	// refreshAllStats should query auth-files and api-key-usage in bulk
+	if !strings.Contains(html, "function refreshAllStats") {
+		t.Fatal("expected index.html to define refreshAllStats")
+	}
+	if !strings.Contains(html, "apiFetch('/v0/management/api-key-usage')") {
+		t.Fatal("expected refreshAllStats to query api-key-usage")
+	}
+
+	// fetchFileQuota should invoke refreshFileStats
+	if !strings.Contains(html, "refreshFileStats(file)") {
+		t.Fatal("expected fetchFileQuota to invoke refreshFileStats")
+	}
+
+	// refreshAll should invoke refreshAllStats
+	if !strings.Contains(html, "refreshAllStats()") {
+		t.Fatal("expected refreshAll to invoke refreshAllStats")
+	}
+}
+
+func TestEmbeddedDashboard_RobustnessAndHardening(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Exactly one definition of function updateLoadedCount
+	countUpdateLoadedCount := strings.Count(html, "function updateLoadedCount")
+	if countUpdateLoadedCount != 1 {
+		t.Fatalf("expected exactly 1 definition of function updateLoadedCount in index.html, found %d", countUpdateLoadedCount)
+	}
+
+	// AbortController and 30s timeout
+	if !strings.Contains(html, "new AbortController()") {
+		t.Fatal("expected index.html to contain AbortController")
+	}
+	if !strings.Contains(html, "30000") {
+		t.Fatal("expected index.html to contain 30s timeout (30000)")
+	}
+
+	// 3-minute (180000 ms) auto-refresh interval
+	if !strings.Contains(html, "180000") {
+		t.Fatal("expected index.html to contain 3-minute auto-refresh interval (180000)")
+	}
+
+	// .fill.no-data class in CSS
+	if !strings.Contains(html, ".fill.no-data") {
+		t.Fatal("expected index.html to contain .fill.no-data CSS class")
+	}
+
+	// Issue #35: xAI token consumption warnings and unattended refresh protections
+	if !strings.Contains(html, ".xai-token-warn-badge") || !strings.Contains(html, ".xai-token-warn-note") {
+		t.Fatal("expected index.html to contain xAI token warning CSS classes")
+	}
+	if !strings.Contains(html, "document.hidden") {
+		t.Fatal("expected index.html auto-refresh loop to check document.hidden")
+	}
+}
+
+func TestEmbeddedDashboard_EgoAuthHandlingAndCleanups(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// Auth warning banner container in Ego view
+	if !strings.Contains(html, `id="ego-auth-warning"`) {
+		t.Fatal("expected index.html to contain ego-auth-warning container")
+	}
+
+	// Dead helper getPluginBaseResourcePath should be removed
+	if strings.Contains(html, "getPluginBaseResourcePath") {
+		t.Fatal("expected dead helper getPluginBaseResourcePath to be removed from index.html")
+	}
+
+	// loadEgoOverview checks for getManagementKey and 401
+	if !strings.Contains(html, "const key = getManagementKey()") {
+		t.Fatal("expected loadEgoOverview to verify managementKey")
 	}
 }

@@ -43,13 +43,18 @@ static void store_host_api(const cliproxy_host_api* host) {
 import "C"
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"unsafe"
 
+	"control-account/internal/ego"
 	"control-account/internal/handlers"
 	"control-account/internal/lifecycle"
 	"control-account/internal/version"
@@ -110,11 +115,28 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, plugin *C.cliproxy_plugin_a
 }
 
 //export cliproxyPluginCall
-func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) C.int {
+func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t, response *C.cliproxy_buffer) (rc C.int) {
 	if response != nil {
 		response.ptr = nil
 		response.len = 0
 	}
+	// The plugin runs its own Go runtime inside the host process, so an
+	// unrecovered panic here kills CLIProxyAPI. Never let one cross the ABI.
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		// Drop any buffer already handed out so the host receives exactly one.
+		if response != nil && response.ptr != nil {
+			C.free(response.ptr)
+			response.ptr = nil
+			response.len = 0
+		}
+		writeResponse(response, errorEnvelope("plugin_panic", fmt.Sprintf("recovered from panic: %v", r)))
+		rc = 1
+	}()
+
 	if method == nil {
 		writeResponse(response, errorEnvelope("invalid_method", "method is required"))
 		return 1
@@ -156,13 +178,14 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 				"Name":             "control-account",
 				"Version":          version.Version,
 				"Author":           "Clowraider",
-				"Description":      "Quota management dashboard with account prefix support",
+				"Description":      "Quota management dashboard and developer Ego analytics",
 				"GitHubRepository": "https://github.com/Clowraider/cli-control-account",
 				"Logo":             "",
 				"ConfigFields":     []any{},
 			},
 			"capabilities": map[string]any{
 				"management_api": true,
+				"usage_plugin":   true,
 			},
 		}
 		raw, err := json.Marshal(registration)
@@ -179,6 +202,23 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 					"Menu":        "Control Account",
 					"Description": "Quota management dashboard with account prefix display",
 				},
+				{
+					"Path":        "/ego",
+					"Menu":        "Ego",
+					"Description": "Developer Ego analytics: token burn & latency metrics",
+				},
+			},
+			"routes": []map[string]any{
+				{"Method": "GET", "Path": "/ego/stats"},
+				{"Method": "GET", "Path": "/ego/timeline"},
+				{"Method": "GET", "Path": "/ego/providers"},
+				{"Method": "GET", "Path": "/ego/models"},
+				{"Method": "GET", "Path": "/ego/accounts"},
+				{"Method": "GET", "Path": "/ego/settings"},
+				{"Method": "POST", "Path": "/ego/settings"},
+				{"Method": "POST", "Path": "/ego/prune"},
+				{"Method": "POST", "Path": "/ego/reset"},
+				{"Method": "GET", "Path": "/ego/pricing"},
 			},
 		}
 		raw, err := json.Marshal(regResponse)
@@ -186,6 +226,10 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 			return nil, err
 		}
 		return okEnvelope(raw), nil
+
+	case "usage.handle":
+		ego.GetWorker().Record(request)
+		return okEnvelope([]byte(`{"status":"ok"}`)), nil
 
 	case "management.handle":
 		return handleManagementHTTP(request)
@@ -195,16 +239,77 @@ func handlePluginMethod(method string, request []byte) ([]byte, error) {
 	}
 }
 
+// egoAPIEndpointPattern is the allowlist for the client controlled ego API
+// endpoint. The resolved value is concatenated into the request target of
+// httptest.NewRequest, which panics by design on anything it cannot parse, so
+// only the flat endpoint names served by ego.Handler are accepted.
+var egoAPIEndpointPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
 func handleManagementHTTP(request []byte) ([]byte, error) {
 	var req managementRequestPayload
 	if len(request) > 0 {
-		_ = json.Unmarshal(request, &req)
+		if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
+			return errorEnvelope("invalid_request", "invalid management request payload: "+errUnmarshal.Error()), nil
+		}
 	}
 
-	// Resolve asset path from request path
+	// 1. Authenticated Ego REST API routing under /v0/management/ego
+	if strings.HasPrefix(req.Path, "/v0/management/ego") {
+		cleanPath := strings.TrimPrefix(req.Path, "/v0/management/ego")
+		cleanPath = strings.TrimPrefix(cleanPath, "/")
+		if idx := strings.Index(cleanPath, "?"); idx != -1 {
+			cleanPath = cleanPath[:idx]
+		}
+		if !egoAPIEndpointPattern.MatchString(cleanPath) {
+			resp := managementResponsePayload{
+				StatusCode: http.StatusNotFound,
+				Headers: map[string][]string{
+					"Content-Type": {"application/json; charset=utf-8"},
+				},
+				Body: base64.StdEncoding.EncodeToString([]byte(`{"error":"not_found","message":"endpoint not found"}`)),
+			}
+			raw, _ := json.Marshal(resp)
+			return okEnvelope(raw), nil
+		}
+
+		egoHandler := ego.NewHandler(ego.GetWorker())
+		httpReq := httptest.NewRequest(req.Method, "/ego/api/"+cleanPath, bytes.NewReader(req.Body))
+		for k, vv := range req.Headers {
+			for _, v := range vv {
+				httpReq.Header.Add(k, v)
+			}
+		}
+		if len(req.Query) > 0 {
+			q := httpReq.URL.Query()
+			for k, vv := range req.Query {
+				for _, v := range vv {
+					q.Add(k, v)
+				}
+			}
+			httpReq.URL.RawQuery = q.Encode()
+		}
+
+		rec := httptest.NewRecorder()
+		egoHandler.ServeHTTP(rec, httpReq)
+
+		resp := managementResponsePayload{
+			StatusCode: rec.Code,
+			Headers:    rec.Header(),
+			Body:       base64.StdEncoding.EncodeToString(rec.Body.Bytes()),
+		}
+		raw, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return okEnvelope(raw), nil
+	}
+
+	// 2. Web UI Assets: Both /quota and /ego serve the single-page dashboard
 	subpath := req.Path
 	if idx := strings.Index(subpath, "/quota"); idx != -1 {
 		subpath = subpath[idx+len("/quota"):]
+	} else if idx := strings.Index(subpath, "/ego"); idx != -1 {
+		subpath = subpath[idx+len("/ego"):]
 	}
 	subpath = strings.TrimPrefix(subpath, "/")
 	if subpath == "" {
