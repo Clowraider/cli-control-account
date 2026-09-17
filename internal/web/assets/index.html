@@ -3064,7 +3064,8 @@ body {
               let warning = false;
 
               if (util !== null) {
-                pct = Math.max(0, Math.min(100, Math.round((1 - util) * 100)));
+                const clampedUsed = Math.max(0, Math.min(100, util));
+                pct = Math.max(0, Math.min(100, Math.round(100 - clampedUsed)));
                 percentLabel = pct === 100 ? 'Quota available' : `${pct}% remaining`;
                 resetLabel = pct === 100 && !resetInfo.ms ? 'Quota available' : resetInfo.label;
                 warning = pct < 20;

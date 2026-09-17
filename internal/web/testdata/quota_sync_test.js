@@ -355,13 +355,13 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
           statusCode: 200,
           header: { date: ['Tue, 08 Sep 2026 12:00:00 GMT'] },
           body: {
-            five_hour: { utilization: 0.1, resets_at: '2026-09-08T15:00:00Z' },
-            seven_day: { utilization: 0.2, resets_at: '2026-09-10T12:00:00Z' },
-            seven_day_opus: { utilization: 0.3, resets_at: '2026-09-11T12:00:00Z' },
-            seven_day_sonnet: { utilization: 0.4, resets_at: '2026-09-12T12:00:00Z' },
-            seven_day_cowork: { utilization: 0.5, resets_at: '2026-09-13T12:00:00Z' },
-            seven_day_oauth_apps: { utilization: 0.6, resets_at: '2026-09-14T12:00:00Z' },
-            iguana_necktie: { utilization: 0.7, resets_at: '2026-09-15T12:00:00Z' },
+            five_hour: { utilization: 10, resets_at: '2026-09-08T15:00:00Z' },
+            seven_day: { utilization: 2, resets_at: '2026-09-10T12:00:00Z' },
+            seven_day_opus: { utilization: 30, resets_at: '2026-09-11T12:00:00Z' },
+            seven_day_sonnet: { utilization: 40, resets_at: '2026-09-12T12:00:00Z' },
+            seven_day_cowork: { utilization: 50, resets_at: '2026-09-13T12:00:00Z' },
+            seven_day_oauth_apps: { utilization: 60, resets_at: '2026-09-14T12:00:00Z' },
+            iguana_necktie: { utilization: 70, resets_at: '2026-09-15T12:00:00Z' },
           },
         }),
       };
@@ -406,6 +406,17 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
   assert.equal(opusRow.percent, 70);
   assert.equal(opusRow.percentLabel, '70% remaining');
   assert.ok(opusRow.resetMs > 0);
+
+  // Critical regression test: utilization 2% should result in 98% remaining, NOT 0%
+  const weeklyRow = rows.find(r => r.label === 'Weekly Limit');
+  assert.equal(weeklyRow.percent, 98);
+  assert.equal(weeklyRow.percentLabel, '98% remaining');
+  assert.equal(weeklyRow.warning, false);
+
+  const fiveHourRow = rows.find(r => r.label === 'Five Hour Limit');
+  assert.equal(fiveHourRow.percent, 90);
+  assert.equal(fiveHourRow.percentLabel, '90% remaining');
+  assert.equal(fiveHourRow.warning, false);
 });
 
 test('Scope 4: Server Time Clock Skew Synchronization', () => {

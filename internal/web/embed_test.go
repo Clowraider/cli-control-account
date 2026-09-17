@@ -222,6 +222,9 @@ func TestEmbeddedDashboard_CPAMCQuotaStandardsSynchronization(t *testing.T) {
 			t.Errorf("expected index.html to contain %q", req)
 		}
 	}
+	if strings.Contains(html, "(1 - util)") {
+		t.Fatal("Claude utilization must not be treated as a decimal fraction with (1 - util)")
+	}
 
 	// Scope 4: Server time clock skew synchronization
 	timeRequirements := []string{
