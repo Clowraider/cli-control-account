@@ -387,10 +387,46 @@ func TestEmbeddedDashboard_JavaScriptSyntax(t *testing.T) {
 
 	jsCode := html[start+len("<script>") : end]
 
-	cmd := exec.Command(nodePath, "-e", "new Function(process.argv[1]);", jsCode)
+	cmd := exec.Command(nodePath, "--check")
+	cmd.Stdin = strings.NewReader(jsCode)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("embedded JavaScript has syntax error: %v\nOutput:\n%s", err, string(output))
+	}
+}
+
+func TestEmbeddedDashboard_CardActivityAndQuotaRefresh(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+
+	// refreshFileStats should query /v0/management/auth-files?name=
+	if !strings.Contains(html, "function refreshFileStats") {
+		t.Fatal("expected index.html to define refreshFileStats")
+	}
+	if !strings.Contains(html, "apiFetch(`/v0/management/auth-files?name=${encodeURIComponent(file.name)}`)") {
+		t.Fatal("expected refreshFileStats to query auth-files with filename parameter")
+	}
+
+	// refreshAllStats should query auth-files and api-key-usage in bulk
+	if !strings.Contains(html, "function refreshAllStats") {
+		t.Fatal("expected index.html to define refreshAllStats")
+	}
+	if !strings.Contains(html, "apiFetch('/v0/management/api-key-usage')") {
+		t.Fatal("expected refreshAllStats to query api-key-usage")
+	}
+
+	// fetchFileQuota should invoke refreshFileStats
+	if !strings.Contains(html, "refreshFileStats(file)") {
+		t.Fatal("expected fetchFileQuota to invoke refreshFileStats")
+	}
+
+	// refreshAll should invoke refreshAllStats
+	if !strings.Contains(html, "refreshAllStats()") {
+		t.Fatal("expected refreshAll to invoke refreshAllStats")
 	}
 }
 

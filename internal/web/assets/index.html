@@ -2676,6 +2676,68 @@ body {
 
   let isRefreshingAll = false;
 
+  async function refreshFileStats(file) {
+    if (!file || !file.name) return;
+    try {
+      const res = await apiFetch(`/v0/management/auth-files?name=${encodeURIComponent(file.name)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const updated = (json.files || []).find(f => f.name === file.name || f.id === file.name);
+        if (updated) {
+          if (Array.isArray(updated.recent_requests)) file.recent_requests = updated.recent_requests;
+          if (Array.isArray(updated.recentRequests)) file.recentRequests = updated.recentRequests;
+          if (typeof updated.success === 'number') file.success = updated.success;
+          if (typeof updated.failed === 'number') file.failed = updated.failed;
+          if (typeof updated.disabled === 'boolean') file.disabled = updated.disabled;
+          if (updated.status) file.status = updated.status;
+          if (updated.status_message) file.status_message = updated.status_message;
+          if (updated.cooldowns !== undefined) file.cooldowns = updated.cooldowns;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to refresh file stats for:', file.name, e);
+    }
+  }
+
+  async function refreshAllStats() {
+    try {
+      const [filesRes, usageRes] = await Promise.allSettled([
+        apiFetch('/v0/management/auth-files'),
+        apiFetch('/v0/management/api-key-usage')
+      ]);
+
+      if (filesRes.status === 'fulfilled' && filesRes.value.ok) {
+        const json = await filesRes.value.json();
+        const newFiles = json.files || [];
+        const map = new Map(newFiles.map(f => [f.name, f]));
+        authFiles.forEach(file => {
+          const updated = map.get(file.name);
+          if (updated) {
+            if (Array.isArray(updated.recent_requests)) file.recent_requests = updated.recent_requests;
+            if (Array.isArray(updated.recentRequests)) file.recentRequests = updated.recentRequests;
+            if (typeof updated.success === 'number') file.success = updated.success;
+            if (typeof updated.failed === 'number') file.failed = updated.failed;
+            if (typeof updated.disabled === 'boolean') file.disabled = updated.disabled;
+            if (updated.status) file.status = updated.status;
+            if (updated.status_message) file.status_message = updated.status_message;
+            if (updated.cooldowns !== undefined) file.cooldowns = updated.cooldowns;
+          }
+        });
+      }
+
+      if (usageRes.status === 'fulfilled' && usageRes.value.ok) {
+        const data = await usageRes.value.json();
+        if (data && typeof data === 'object') {
+          apiKeyUsage = data;
+        }
+      }
+
+      renderThroughputPanel();
+    } catch (e) {
+      console.warn('Failed to refresh all stats:', e);
+    }
+  }
+
   function refreshAll(isManual = false) {
     if (isRefreshingAll) return;
     isRefreshingAll = true;
@@ -2685,10 +2747,14 @@ body {
 
     const activeFiles = authFiles.filter(f => !f.disabled);
     const promises = activeFiles.map(file => fetchFileQuota(file, isManual));
-    Promise.allSettled(promises).finally(() => {
+    const statsPromise = refreshAllStats();
+
+    Promise.allSettled([...promises, statsPromise]).finally(() => {
       isRefreshingAll = false;
       if (icon) icon.classList.remove('spinning');
       updateLoadedCount();
+      renderThroughputPanel();
+      render();
     });
   }
 
@@ -2697,24 +2763,33 @@ body {
     quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
     render();
 
+    const statsPromise = !isRefreshingAll ? refreshFileStats(file) : Promise.resolve();
+
     try {
       const provider = resolveProvider(file);
       const authIndex = file.auth_index ?? file.authIndex ?? file.name;
 
+      let quotaPromise;
       if (provider === 'antigravity') {
-        await fetchAntigravityQuota(file, authIndex);
+        quotaPromise = fetchAntigravityQuota(file, authIndex);
       } else if (provider === 'claude') {
-        await fetchClaudeQuota(file, authIndex);
+        quotaPromise = fetchClaudeQuota(file, authIndex);
       } else if (provider === 'codex') {
-        await fetchCodexQuota(file, authIndex);
+        quotaPromise = fetchCodexQuota(file, authIndex);
       } else if (provider === 'kimi') {
         // Live quota via Management api-call → GET https://api.kimi.com/coding/v1/usages
-        await fetchKimiQuota(file, authIndex);
+        quotaPromise = fetchKimiQuota(file, authIndex);
       } else if (provider === 'xai') {
         // Live quota via Management api-call → GET cli-chat-proxy.grok.com/v1/billing
-        await fetchXaiQuota(file, authIndex, isManual);
+        quotaPromise = fetchXaiQuota(file, authIndex, isManual);
       } else {
         quotaStore[fileName] = { loading: false, plan: 'Active', groups: [] };
+        quotaPromise = Promise.resolve();
+      }
+
+      const results = await Promise.allSettled([quotaPromise, statsPromise]);
+      if (results[0].status === 'rejected') {
+        throw results[0].reason;
       }
     } catch (err) {
       quotaStore[fileName] = {
@@ -2726,6 +2801,7 @@ body {
       if (quotaStore[fileName]) {
         quotaStore[fileName].loading = false;
       }
+      renderThroughputPanel();
       render();
       updateLoadedCount();
     }
