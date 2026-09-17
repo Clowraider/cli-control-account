@@ -1,9 +1,29 @@
 # CLIProxyAPI Control Account & Ego Analytics Plugin
 
+[![GitHub Release](https://img.shields.io/github/v/release/Clowraider/cli-control-account?color=00ADD8&logo=github)](https://github.com/Clowraider/cli-control-account/releases/latest)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github.com/router-for-all/CLIProxyAPI)** that provides an embedded Quota Management and Developer Ego Analytics Single-Page Application (SPA) dashboard with dark theme, real-time quota calculations, provider tab filtering, interactive profile/prefix modification, live throughput metrics, per-account activity sparklines, enabled/disabled account toggles, token burn tracking, and estimated retail cost equivalence.
+A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github.com/router-for-all/CLIProxyAPI)** that provides an embedded **Quota Management** and **Developer Ego Analytics** Single-Page Application (SPA) dashboard. Features dark theme, real-time upstream quota meters, synchronized per-account activity sparklines, provider filtering, interactive profile/prefix modification, token burn rate tracking, and retail cost equivalence in USD.
+
+---
+
+## 📸 Screenshots
+
+### Quota Management Dashboard
+Real-time quota monitoring, reset credit management, interactive prefix editing, per-account activity sparklines (~3.3h window), and throughput KPI metrics.
+
+![Quota Management Dashboard](img/quota-management.png)
+
+### Developer Ego Analytics
+Aggregated token burn volume, prompt vs. output timeline, retail value estimation ($ USD), provider speed benchmarks, and model breakdown.
+
+![Developer Ego Analytics Overview](img/ego-analytics-overview.png)
+
+### Usage Breakdowns & Engine Controls
+Top accounts and credential utilization, detailed latency profiles, and non-blocking asynchronous ingestion controls.
+
+![Developer Ego Analytics Breakdown](img/ego-analytics-breakdown.png)
 
 ---
 
@@ -15,12 +35,12 @@ A standard C-ABI dynamic library plugin in Go for **[CLIProxyAPI](https://github
 
 ## 📦 Option 1: Quick Install with Precompiled Binaries (No compilation needed)
 
-No Go toolchain or C compiler is required. Download the pre-built `.so` file for your platform directly from [GitHub Releases](https://github.com/Clowraider/cli-control-account/releases):
+No Go toolchain or C compiler is required. Download the pre-built `.so` file for your platform directly from [GitHub Releases](https://github.com/Clowraider/cli-control-account/releases/latest):
 
-| Platform / Architecture | Download Binary |
-|---|---|
-| **Linux amd64** (Ubuntu / Debian / Docker Standard) | `control-account-linux-amd64.so` |
-| **Linux arm64** (Apple Silicon Docker / Raspberry / AWS Graviton) | `control-account-linux-arm64.so` |
+| Platform / Architecture | Download Binary | Description |
+|---|---|---|
+| **Linux amd64** | `control-account-linux-amd64.so` | Standard Ubuntu / Debian / Docker x86_64 |
+| **Linux arm64** | `control-account-linux-arm64.so` | Apple Silicon Docker / Raspberry Pi / AWS Graviton |
 
 ### 1. Place the binary in your plugins folder
 ```bash
@@ -66,18 +86,23 @@ Access the dashboards in your browser:
 
 ---
 
-## 📊 Developer Ego Analytics
+## ✨ Features & Architecture
 
-The plugin includes an integrated **Developer Ego Analytics** engine designed to give developers clear visibility into their LLM consumption and retail value equivalence:
+### 1. Live Quota & Per-Account Activity Synchronization
+- **Upstream Providers**: Live quota querying for Google Antigravity, Anthropic Claude, OpenAI Codex, Kimi/Moonshot, and xAI (Grok).
+- **Per-Credential Activity Sparklines**: Activity bar (~3.3h window), total requests, and success rate (% ok) automatically refresh alongside live quota checks, keeping metrics consistent without full page reloads.
+- **Codex Reset Credits**: View and redeem available Codex reset credits directly from account cards.
+- **Prefix & Routing Management**: Live pencil edit modal for account prefixes with automatic `Prefix (A-Z)` sorting.
+- **Safety & Robustness**: Concurrency guards, 30s timeout handlers, fail-open defaults, and xAI token-burn protections during unattended auto-refresh.
 
-- **Token Burn Rate & Metrics**: Aggregates Prompt, Completion, Reasoning, and Cache Creation tokens across all configured providers and models.
-- **Provider Accounting Semantics**:
+### 2. Developer Ego Analytics & Token Valuation
+- **Token Accounting Semantics**:
   - **Claude / Anthropic (`independent`)**: Prompt input tokens exclude cache, reasoning is additive to output, and cache creation is priced at 1.25x.
   - **Gemini / Antigravity (`separateReasoning`)**: Prompt input includes cache, reasoning is additive to output.
   - **OpenAI / Codex (`subset`)**: Prompt input includes cache, reasoning is a subset of completion tokens.
-- **Estimated Retail Value**: Curated embedded pricing catalog for leading models (Claude 3.7/3.5, GPT-4o, o1/o3, Gemini 2.5/3.8, DeepSeek) calculates retail cost equivalence in $ USD against flat subscription costs.
-- **Interactive Timeline**: 5-minute bucket grouping for the 1h window, plus hourly and daily buckets for 24h, 7d, and 30d views.
-- **Privacy & Storage Hardening**: Local SQLite database stored at `~/.cliproxy/ego.db` with restricted file permissions (`0700` directory, `0600` database file). Manual pruning and reset are executed safely via authenticated POST management routes.
+- **Embedded Pricing Database**: Integrated offline pricing catalog covering ~4,300 models to calculate retail cost equivalence in $ USD against flat subscription rates.
+- **Multi-Resolution Timelines**: 5-minute buckets for 1h view; hourly and daily buckets for 24h, 7d, 30d, and All-time views.
+- **Storage & Privacy Hardening**: Local SQLite database stored at `~/.cliproxy/ego.db` with restricted file permissions (`0700` directory, `0600` database file). Asynchronous non-blocking event worker and authenticated management endpoints (`/v0/management/ego/*`).
 
 ---
 
@@ -121,6 +146,10 @@ cli-control-account/
 ├── go.mod                            # Go module definition
 ├── main.go                           # C-ABI entry point & authenticated management router
 ├── main_test.go                      # Unit tests for C-ABI entry point
+├── img/                              # Dashboard screenshots
+│   ├── quota-management.png          # Quota management screenshot
+│   ├── ego-analytics-overview.png    # Ego analytics overview & timeline
+│   └── ego-analytics-breakdown.png   # Usage breakdowns & engine settings
 ├── internal/
 │   ├── ego/                          # Developer Ego analytics engine
 │   │   ├── handler.go                # Authenticated REST API handler (/v0/management/ego/*)
