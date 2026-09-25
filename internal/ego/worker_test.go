@@ -468,3 +468,33 @@ func TestTransformToEgoEvent_TotalTokensFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestWorker_StopFlushesQueuedEventsAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "ego.db")
+	storage, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("open storage: %v", err)
+	}
+	// Long flush interval and big batch: nothing is written until Stop drains.
+	w := NewWorker(storage, 100, 1000, time.Hour)
+	w.Start()
+	for i := 0; i < 10; i++ {
+		w.Record([]byte(`{"provider":"openai","model":"gpt-4o","detail":{"input_tokens":1,"output_tokens":1}}`))
+	}
+	w.Stop()
+	w.Stop() // must not panic on double close
+
+	reopened, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("reopen storage: %v", err)
+	}
+	defer reopened.Close()
+	n, err := reopened.GetTotalRecords()
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 10 {
+		t.Fatalf("expected 10 flushed events after Stop, got %d", n)
+	}
+}

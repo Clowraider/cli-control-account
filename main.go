@@ -167,7 +167,12 @@ func cliproxyPluginFree(ptr unsafe.Pointer, len C.size_t) {
 }
 
 //export cliproxyPluginShutdown
-func cliproxyPluginShutdown() {}
+func cliproxyPluginShutdown() {
+	// Flush the in-memory ingestion queue (up to 2048 events plus the pending
+	// batch) and close SQLite cleanly; otherwise they are lost on every restart.
+	defer func() { _ = recover() }()
+	ego.ShutdownWorker()
+}
 
 func handlePluginMethod(method string, request []byte) ([]byte, error) {
 	switch method {
