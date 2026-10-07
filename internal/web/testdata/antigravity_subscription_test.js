@@ -39,6 +39,10 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 })) {
     navigator: { userAgent: 'node-test' },
     TextDecoder,
     TextEncoder,
+    URL: globalThis.URL,
+    AbortController: globalThis.AbortController,
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    clearTimeout: (id) => clearTimeout(id),
     window: { location: { host: 'test.local' }, parent: { localStorage: storage } },
     document: {
       readyState: 'loading',

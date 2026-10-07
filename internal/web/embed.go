@@ -40,7 +40,8 @@ func GetAsset(assetName string) ([]byte, string, error) {
 	}
 
 	if cleanName == "index.html" {
-		data = bytes.ReplaceAll(data, []byte("__PLUGIN_VERSION__"), []byte(version.Version))
+		cleanVersion := strings.TrimPrefix(version.Version, "v")
+		data = bytes.ReplaceAll(data, []byte("__PLUGIN_VERSION__"), []byte(cleanVersion))
 	}
 
 	mimeType := ResolveMIMEType(cleanName)

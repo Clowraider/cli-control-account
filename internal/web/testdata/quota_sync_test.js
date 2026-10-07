@@ -30,6 +30,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     extractCodexPlanType,
     extractCodexChatgptAccountId,
     parseCodexResetCredits,
+    normalizeCodexAccountCredits,
+    parseCodexSubscriptionActiveUntil,
     parseClaudePlan,
     syncServerTimeOffset,
     getServerTimeOffset: () => serverTimeOffsetMs,
@@ -38,6 +40,11 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     formatDuration,
     renderCard,
     buildCodexQuotaRows,
+    parseKimiQuotaUrl,
+    resolveKimiQuotaUrl,
+    parseKimiUsages,
+    fetchKimiQuota,
+    resolveXaiSubscriptionPlan,
     fetchXaiQuota,
     fetchFileQuota,
     refreshAll,
@@ -108,6 +115,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     TextDecoder,
     TextEncoder,
     Buffer,
+    URL: globalThis.URL,
     AbortController: globalThis.AbortController,
     setTimeout: wrappedSetTimeout,
     clearTimeout: wrappedClearTimeout,
@@ -237,6 +245,7 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
           header: { date: ['Tue, 08 Sep 2026 12:00:00 GMT'] },
           body: {
             plan_type: 'plus',
+            credits: { balance: 25.5, unlimited: false },
             rate_limit: {
               primary_window: { used_percent: 15, limit_window_seconds: 18000 },
               secondary_window: { used_percent: 40, limit_window_seconds: 604800 },
@@ -264,17 +273,32 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
       };
     }
 
+    if (payload.url.includes('/subscriptions')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          statusCode: 200,
+          header: { date: ['Tue, 08 Sep 2026 12:00:00 GMT'] },
+          body: {
+            active_until: 1780000000,
+          },
+        }),
+      };
+    }
+
     return { ok: false, status: 404 };
   });
 
   const file = {
     name: 'codex-account-1.json',
+    provider: 'codex',
     id_token: jwt,
   };
 
   await dashboard.fetchCodexQuota(file, 'auth-1');
 
-  assert.equal(calls.length, 2, 'should fetch usage and reset credits in parallel');
+  assert.equal(calls.length, 3, 'should fetch usage, reset credits, and subscriptions in parallel');
   for (const call of calls) {
     assert.equal(call.payload.header['Authorization'], 'Bearer $TOKEN$');
     assert.equal(call.payload.header['OpenAI-Beta'], 'codex-1');
@@ -287,11 +311,17 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
   assert.ok(stored, 'quota should be stored');
   assert.equal(stored.plan, 'Plus');
   assert.equal(stored.resetCredits?.availableCount, 2);
+  assert.equal(stored.subscriptionActiveUntil, 1780000000);
+  assert.equal(stored.credits.balance, '25.5');
+  assert.equal(stored.credits.unlimited, false);
 
   // Render card should contain badge
   const cardHtml = dashboard.renderCard(file);
   assert.ok(cardHtml.includes('reset-credits-badge'), 'card should render reset-credits-badge');
   assert.ok(cardHtml.includes('⚡ 2 reset credits'), 'card should display credit count');
+  assert.ok(cardHtml.includes('codex-credits-badge'), 'card should render codex-credits-badge');
+  assert.ok(cardHtml.includes('25.5'), 'card should render balance');
+  assert.ok(cardHtml.includes('codex-expiry-badge'), 'card should render codex-expiry-badge');
 });
 
 test('Scope 2: parseCodexResetCredits parses different payload shapes', () => {
@@ -326,8 +356,12 @@ test('Scope 3: parseClaudePlan resolves plan according to CPAMC specification', 
   // has_claude_pro -> Pro
   assert.equal(dashboard.parseClaudePlan({ account: { has_claude_pro: true } }), 'Pro');
 
-  // claude_team active -> Team
+  // claude_team active -> Team (takes precedence over personal has_claude_pro)
   assert.equal(dashboard.parseClaudePlan({
+    organization: { organization_type: 'claude_team', subscription_status: 'active' },
+  }), 'Team');
+  assert.equal(dashboard.parseClaudePlan({
+    account: { has_claude_pro: true },
     organization: { organization_type: 'claude_team', subscription_status: 'active' },
   }), 'Team');
 
@@ -387,6 +421,8 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
   await dashboard.fetchClaudeQuota(file, 'auth-claude');
 
   assert.equal(calls.length, 2, 'should call usage and profile in parallel');
+  assert.equal(calls[0].payload.header['User-Agent'], 'claude-cli/2.1.280 (external, cli)');
+  assert.equal(calls[1].payload.header['User-Agent'], 'claude-cli/2.1.280 (external, cli)');
   const stored = dashboard.quotaStore['claude-account-1.json'];
   assert.ok(stored);
   assert.equal(stored.plan, 'Max', 'should resolve Max plan');
@@ -730,4 +766,173 @@ test('Codex quota row precedence matches CPAMC: usedPercent takes precedence ove
   assert.equal(rows3[0].percent, 0);
   assert.equal(rows3[0].percentLabel, '0% remaining');
   assert.equal(rows3[0].warning, true);
+});
+
+test('Kimi parity: parseKimiQuotaUrl resolves .ai vs .com domains dynamically', () => {
+  const dashboard = loadDashboard();
+
+  // 1. Explicit domain
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({ domain: 'ai' }, { name: 'kimi.json' }),
+    'https://api.kimi.ai/coding/v1/usages'
+  );
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({ domain: 'kimi.com' }, { name: 'kimi-ai.json' }),
+    'https://api.kimi.com/coding/v1/usages'
+  );
+
+  // 2. Base URL
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({ base_url: 'https://api.kimi.ai/v1' }, { name: 'kimi.json' }),
+    'https://api.kimi.ai/coding/v1/usages'
+  );
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({ 'base-url': 'https://api.kimi.com/v1' }, { name: 'kimi.json' }),
+    'https://api.kimi.com/coding/v1/usages'
+  );
+
+  // 3. Provider / Type
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({ type: 'kimi-ai' }, { name: 'test.json' }),
+    'https://api.kimi.ai/coding/v1/usages'
+  );
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({}, { provider: 'kimi_ai', name: 'test.json' }),
+    'https://api.kimi.ai/coding/v1/usages'
+  );
+
+  // 4. File name / id fallback
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({}, { name: 'my-kimi-ai-account.json' }),
+    'https://api.kimi.ai/coding/v1/usages'
+  );
+  assert.equal(
+    dashboard.parseKimiQuotaUrl({}, { name: 'standard-kimi.json' }),
+    'https://api.kimi.com/coding/v1/usages'
+  );
+});
+
+test('Kimi parity: parseKimiUsages supports relative reset_in and ttl countdowns', () => {
+  const dashboard = loadDashboard();
+  const baseNow = 1700000000000;
+  dashboard.setServerTimeOffset(0);
+
+  // Relative countdown: reset_in in seconds (3600s = 1h)
+  const payload = {
+    limits: [
+      {
+        name: 'Five Hour Limit',
+        detail: {
+          used: 10,
+          limit: 100,
+          reset_in: 3600,
+        },
+      },
+      {
+        name: 'Weekly Limit',
+        detail: {
+          used: 50,
+          limit: 100,
+          ttl: 86400,
+        },
+      },
+    ],
+  };
+
+  const rows = dashboard.parseKimiUsages(payload);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].percent, 90);
+  assert.ok(rows[0].resetMs > Date.now());
+  assert.ok(rows[0].resetLabel.includes('Refreshes in'));
+  assert.equal(rows[1].percent, 50);
+  assert.ok(rows[1].resetMs > Date.now());
+  assert.ok(rows[1].resetLabel.includes('Refreshes in'));
+});
+
+test('Codex parity: normalizeCodexAccountCredits extracts balance and unlimited', () => {
+  const dashboard = loadDashboard();
+
+  assert.deepEqual({ ...dashboard.normalizeCodexAccountCredits(null) }, { balance: null, unlimited: false });
+  assert.deepEqual({ ...dashboard.normalizeCodexAccountCredits({ balance: 50 }) }, { balance: '50', unlimited: false });
+  assert.deepEqual({ ...dashboard.normalizeCodexAccountCredits({ balance: '12.50', unlimited: false }) }, { balance: '12.50', unlimited: false });
+  assert.deepEqual({ ...dashboard.normalizeCodexAccountCredits({ balance: 'invalid', unlimited: true }) }, { balance: null, unlimited: true });
+});
+
+test('Codex parity: parseCodexSubscriptionActiveUntil parses number and ISO strings', () => {
+  const dashboard = loadDashboard();
+
+  assert.equal(dashboard.parseCodexSubscriptionActiveUntil(null), null);
+  assert.equal(dashboard.parseCodexSubscriptionActiveUntil({ active_until: 1750000000 }), 1750000000);
+  assert.equal(dashboard.parseCodexSubscriptionActiveUntil({ activeUntil: '2026-11-01T00:00:00Z' }), '2026-11-01T00:00:00Z');
+  assert.equal(dashboard.parseCodexSubscriptionActiveUntil(JSON.stringify({ active_until: 1750000000 })), 1750000000);
+});
+
+test('xAI parity: resolveXaiSubscriptionPlan resolves elite, premium, and standard tiers', () => {
+  const dashboard = loadDashboard();
+
+  assert.equal(dashboard.resolveXaiSubscriptionPlan(null, null), null);
+
+  const elite = dashboard.resolveXaiSubscriptionPlan('tier_heavy', 'SuperGrok Heavy');
+  assert.deepEqual({ ...elite }, { label: 'SuperGrok Heavy', tier: 'elite' });
+
+  const premium = dashboard.resolveXaiSubscriptionPlan('premium', 'SuperGrok');
+  assert.deepEqual({ ...premium }, { label: 'SuperGrok', tier: 'premium' });
+
+  const standard = dashboard.resolveXaiSubscriptionPlan('basic', 'Standard Plan');
+  assert.deepEqual({ ...standard }, { label: 'Standard Plan', tier: 'standard' });
+});
+
+test('xAI parity: fetchXaiQuota enriches plan with subscription info from user and settings endpoints', async () => {
+  const calls = [];
+  const mockFetch = async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/v0/management/api-call') {
+      const parsed = JSON.parse(options.body);
+      if (parsed.url && parsed.url.includes('format=credits')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            statusCode: 200,
+            body: {
+              config: {
+                credit_usage_percent: 45,
+                current_period: { end: '2026-10-14T00:00:00Z', type: 'weekly' },
+              },
+            },
+          }),
+        };
+      }
+      if (parsed.url && parsed.url.includes('v1/user')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            statusCode: 200,
+            body: { subscription_tier: 'heavy' },
+          }),
+        };
+      }
+      if (parsed.url && parsed.url.includes('v1/settings')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            statusCode: 200,
+            body: { subscription_tier_display: 'SuperGrok Heavy' },
+          }),
+        };
+      }
+    }
+    return { ok: false, status: 404 };
+  };
+
+  const dashboard = loadDashboard(mockFetch);
+  const file = { name: 'xai-sub.json', type: 'xai', auth_index: 'auth-xai-sub' };
+  await dashboard.fetchXaiQuota(file, 'auth-xai-sub', false);
+
+  const stored = dashboard.quotaStore['xai-sub.json'];
+  assert.ok(stored);
+  assert.equal(stored.plan, 'SuperGrok Heavy');
+  assert.deepEqual({ ...stored.subscriptionPlan }, { label: 'SuperGrok Heavy', tier: 'elite' });
 });

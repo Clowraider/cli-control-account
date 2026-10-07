@@ -51,6 +51,9 @@ func TestGetAsset_VersionReplacement(t *testing.T) {
 	if !strings.Contains(content, expectedBadge) {
 		t.Errorf("expected index.html to contain version badge %q", expectedBadge)
 	}
+	if strings.Contains(content, "vv") {
+		t.Errorf("expected index.html not to contain double 'v' in version badge, found 'vv'")
+	}
 	if strings.Contains(content, "__PLUGIN_VERSION__") {
 		t.Errorf("expected index.html not to contain placeholder '__PLUGIN_VERSION__'")
 	}
@@ -216,6 +219,7 @@ func TestEmbeddedDashboard_CPAMCQuotaStandardsSynchronization(t *testing.T) {
 		"seven_day_cowork",
 		"seven_day_oauth_apps",
 		"iguana_necktie",
+		"claude-cli/2.1.280",
 	}
 	for _, req := range claudeRequirements {
 		if !strings.Contains(html, req) {
@@ -262,7 +266,7 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 
 	html := string(data)
 
-	// Parity 1: Codex interactive reset credit consumption
+	// Parity 1: Codex interactive reset credit consumption and subscription/credits
 	codexRequirements := []string{
 		"consumeCodexResetCredit",
 		"createCodexRedeemRequestId",
@@ -270,6 +274,10 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 		"btn-consume-credit",
 		"/v0/management/reset-quota",
 		"extractCodexPlanType",
+		"https://chatgpt.com/backend-api/subscriptions",
+		"normalizeCodexAccountCredits",
+		"parseCodexSubscriptionActiveUntil",
+		"codex-credits-badge",
 	}
 	for _, req := range codexRequirements {
 		if !strings.Contains(html, req) {
@@ -277,10 +285,14 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 		}
 	}
 
-	// Parity 2: xAI real paid health check
+	// Parity 2: xAI real paid health check and subscription enrichment
 	xaiRequirements := []string{
 		"https://api.x.ai/v1/chat/completions",
 		"grok-4.5",
+		"https://cli-chat-proxy.grok.com/v1/user?include=subscription",
+		"https://cli-chat-proxy.grok.com/v1/settings",
+		"resolveXaiSubscriptionPlan",
+		"requestXaiSubscription",
 	}
 	for _, req := range xaiRequirements {
 		if !strings.Contains(html, req) {
@@ -310,6 +322,20 @@ func TestEmbeddedDashboard_CoreParityExtensions(t *testing.T) {
 	for _, req := range identityRequirements {
 		if !strings.Contains(html, req) {
 			t.Errorf("expected index.html to contain identity requirement %q", req)
+		}
+	}
+
+	// Parity 5: Kimi dynamic domain resolution and relative reset counters
+	kimiRequirements := []string{
+		"https://api.kimi.ai/coding/v1/usages",
+		"https://api.kimi.com/coding/v1/usages",
+		"function parseKimiQuotaUrl",
+		"function resolveKimiQuotaUrl",
+		"reset_in",
+	}
+	for _, req := range kimiRequirements {
+		if !strings.Contains(html, req) {
+			t.Errorf("expected index.html to contain Kimi requirement %q", req)
 		}
 	}
 }

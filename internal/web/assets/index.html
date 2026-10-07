@@ -2966,14 +2966,14 @@ body {
     const account = profile.account;
     const org = profile.organization;
 
-    if (account?.has_claude_max) return 'Max';
-    if (account?.has_claude_pro) return 'Pro';
-
     const orgType = typeof org?.organization_type === 'string' ? org.organization_type.toLowerCase() : '';
     const subStatus = typeof org?.subscription_status === 'string' ? org.subscription_status.toLowerCase() : '';
     if (orgType === 'claude_team' && subStatus === 'active') {
       return 'Team';
     }
+
+    if (account?.has_claude_max) return 'Max';
+    if (account?.has_claude_pro) return 'Pro';
 
     if (account?.has_claude_max === false && account?.has_claude_pro === false) {
       return 'Free';
@@ -2985,6 +2985,7 @@ body {
   async function fetchClaudeQuota(file, authIndex) {
     try {
       const headers = {
+        'User-Agent': 'claude-cli/2.1.280 (external, cli)',
         'Authorization': 'Bearer $TOKEN$',
         'Content-Type': 'application/json',
         'anthropic-beta': 'oauth-2025-04-20',
@@ -3455,8 +3456,34 @@ body {
     };
   }
 
+  function normalizeCodexAccountCredits(credits) {
+    if (!credits || typeof credits !== 'object') return { balance: null, unlimited: false };
+    const value = credits.balance;
+    const balance = typeof value === 'number' ? String(value) : (typeof value === 'string' ? value.trim() : null);
+    return {
+      balance: balance && /^\d+(?:\.\d+)?$/.test(balance) && Number.isFinite(Number(balance)) ? balance : null,
+      unlimited: credits.unlimited === true,
+    };
+  }
+
+  function parseCodexSubscriptionActiveUntil(payload) {
+    if (typeof payload === 'string') {
+      const trimmed = payload.trim();
+      if (!trimmed) return null;
+      try { return parseCodexSubscriptionActiveUntil(JSON.parse(trimmed)); } catch (e) { return null; }
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const value = payload.active_until ?? payload.activeUntil;
+    const num = toFiniteNumber(value);
+    if (num !== null && num !== 0) return num;
+    if (typeof value === 'string' && value.trim() && value.trim() !== '0') return value.trim();
+    return null;
+  }
+
   async function fetchCodexQuota(file, authIndex) {
     let resetCredits = null;
+    let subscriptionActiveUntil = null;
+    let accountCredits = { balance: null, unlimited: false };
     try {
       const headers = {
         'Authorization': 'Bearer $TOKEN$',
@@ -3471,7 +3498,11 @@ body {
         headers['Chatgpt-Account-Id'] = accountId;
       }
 
-      const [usageSettled, creditsSettled] = await Promise.allSettled([
+      const subscriptionUrl = accountId
+        ? `https://chatgpt.com/backend-api/subscriptions?account_id=${encodeURIComponent(accountId)}`
+        : 'https://chatgpt.com/backend-api/subscriptions';
+
+      const [usageSettled, creditsSettled, subscriptionSettled] = await Promise.allSettled([
         apiFetch('/v0/management/api-call', {
           method: 'POST',
           body: JSON.stringify({
@@ -3490,7 +3521,29 @@ body {
             header: headers,
           }),
         }),
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex: authIndex,
+            method: 'GET',
+            url: subscriptionUrl,
+            header: headers,
+          }),
+        }),
       ]);
+
+      if (subscriptionSettled.status === 'fulfilled' && subscriptionSettled.value.ok) {
+        try {
+          const subRes = await subscriptionSettled.value.json();
+          let subBody = subRes.body;
+          if (typeof subBody === 'string') {
+            try { subBody = JSON.parse(subBody); } catch (e) {}
+          } else if (!subBody && subRes.bodyText) {
+            try { subBody = JSON.parse(subRes.bodyText); } catch (e) {}
+          }
+          subscriptionActiveUntil = parseCodexSubscriptionActiveUntil(subBody);
+        } catch (e) {}
+      }
 
       if (creditsSettled.status === 'fulfilled' && creditsSettled.value.ok) {
         try {
@@ -3519,6 +3572,12 @@ body {
           if (!resetCredits && (bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits)) {
             resetCredits = parseCodexResetCredits(bodyObj.rate_limit_reset_credits || bodyObj.rateLimitResetCredits);
           }
+          if (bodyObj.credits) {
+            accountCredits = normalizeCodexAccountCredits(bodyObj.credits);
+          }
+          if (!subscriptionActiveUntil) {
+            subscriptionActiveUntil = parseCodexSubscriptionActiveUntil(file?.active_until ?? file?.activeUntil ?? file?._raw?.active_until ?? file?._raw?.activeUntil);
+          }
           const rawPlan = bodyObj.plan_type || bodyObj.planType || extractCodexPlanType(file) || 'plus';
           const planDisplay = rawPlan.charAt(0).toUpperCase() + rawPlan.slice(1);
           const rows = buildCodexQuotaRows(bodyObj);
@@ -3527,6 +3586,8 @@ body {
             loading: false,
             plan: planDisplay,
             resetCredits: resetCredits,
+            subscriptionActiveUntil: subscriptionActiveUntil,
+            credits: accountCredits,
             groups: [{
               title: 'CODEX RATE LIMITS',
               models: 'GPT-5.6 / Codex',
@@ -3544,6 +3605,8 @@ body {
       loading: false,
       plan: fallbackDisplay,
       resetCredits: resetCredits,
+      subscriptionActiveUntil: subscriptionActiveUntil,
+      credits: accountCredits,
       groups: [],
       error: 'Upstream quota request failed',
     };
@@ -3725,10 +3788,100 @@ body {
     return `Limit #${index + 1}`;
   }
 
+  const KIMI_USAGE_URL = 'https://api.kimi.com/coding/v1/usages';
+  const KIMI_AI_USAGE_URL = 'https://api.kimi.ai/coding/v1/usages';
+
+  function domainFromValue(value) {
+    if (typeof value !== 'string') return null;
+    const domain = value.trim().toLowerCase();
+    if (['ai', 'kimi-ai', 'kimi.ai'].includes(domain) || domain.endsWith('.kimi.ai')) {
+      return 'ai';
+    }
+    if (['com', 'kimi', 'kimi.com'].includes(domain) || domain.endsWith('.kimi.com')) {
+      return 'com';
+    }
+    return null;
+  }
+
+  function domainFromBaseUrl(value) {
+    if (typeof value !== 'string') return null;
+    try {
+      if (typeof URL === 'function') {
+        const host = new URL(value.trim()).hostname.toLowerCase();
+        if (host === 'kimi.ai' || host.endsWith('.kimi.ai')) return 'ai';
+        if (host === 'kimi.com' || host.endsWith('.kimi.com')) return 'com';
+      }
+    } catch (e) {}
+    const str = value.trim().toLowerCase();
+    if (str.includes('.kimi.ai') || str.includes('//kimi.ai')) return 'ai';
+    if (str.includes('.kimi.com') || str.includes('//kimi.com')) return 'com';
+    return null;
+  }
+
+  function parseKimiQuotaUrl(credential, file) {
+    let cred = credential;
+    if (typeof cred === 'string') {
+      try { cred = JSON.parse(cred); } catch (e) { cred = null; }
+    }
+    const explicitDomain = (typeof cred?.domain === 'string' && cred.domain.trim())
+      ? (domainFromValue(cred.domain) ?? 'com')
+      : null;
+    const baseUrl = cred?.base_url ?? cred?.['base-url'] ?? file?.base_url ?? file?.['base-url'];
+    const provider = String(file?.provider ?? file?.type ?? cred?.type ?? '').trim().replace(/_/g, '-');
+    const domain = explicitDomain
+      ?? domainFromBaseUrl(baseUrl)
+      ?? domainFromValue(cred?.type)
+      ?? domainFromValue(provider)
+      ?? (/kimi-ai|kimi\.ai/i.test(`${file?.id ?? ''} ${file?.name ?? ''}`) ? 'ai' : 'com');
+    return domain === 'ai' ? KIMI_AI_USAGE_URL : KIMI_USAGE_URL;
+  }
+
+  async function resolveKimiQuotaUrl(file) {
+    if (file?._raw) {
+      return parseKimiQuotaUrl(file._raw, file);
+    }
+    if (file?.name && !file.runtime_only && !file.runtimeOnly) {
+      try {
+        const res = await apiFetch(`/v0/management/auth-files/download?name=${encodeURIComponent(file.name)}`);
+        if (res.ok) {
+          const text = await res.text();
+          try {
+            const raw = JSON.parse(text);
+            file._raw = raw;
+            return parseKimiQuotaUrl(raw, file);
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    return parseKimiQuotaUrl(null, file);
+  }
+
   function parseKimiUsages(payload) {
     if (!payload || typeof payload !== 'object') return [];
     const rows = [];
     const limits = Array.isArray(payload.limits) ? payload.limits : [];
+    const now = Date.now() + serverTimeOffsetMs;
+
+    function extractKimiResetMs(data, fallbackItem) {
+      const resetAt = data?.reset_at || data?.resetAt || data?.reset_time || data?.resetTime
+        || fallbackItem?.reset_at || fallbackItem?.resetAt || fallbackItem?.reset_time || fallbackItem?.resetTime;
+      if (resetAt) {
+        if (typeof resetAt === 'number') return resetAt < 1e11 ? resetAt * 1000 : resetAt;
+        if (typeof resetAt === 'string') {
+          const p = Date.parse(resetAt);
+          if (!isNaN(p)) return p;
+        }
+      }
+      for (const key of ['reset_in', 'resetIn', 'ttl']) {
+        const rawSec = data?.[key] ?? fallbackItem?.[key];
+        const sec = toFiniteNumber(rawSec);
+        if (sec !== null && sec > 0) {
+          return now + sec * 1000;
+        }
+      }
+      return null;
+    }
+
     limits.forEach((item, index) => {
       if (!item || typeof item !== 'object') return;
       const detail = item.detail && typeof item.detail === 'object' ? item.detail : item;
@@ -3740,9 +3893,9 @@ body {
         if (remaining !== null && limit !== null) used = limit - remaining;
       }
       if (used === null && limit === null) return;
-      const resetAt = detail.reset_at || detail.resetAt || detail.reset_time || detail.resetTime || item.reset_at || item.resetAt;
+      const resetMs = extractKimiResetMs(detail, item);
       const label = kimiWindowLabel(item, detail, windowObj, index);
-      rows.push(quotaRow(label, used, limit, resetAt, null));
+      rows.push(quotaRow(label, used, limit, resetMs, null));
     });
     if (payload.usage && typeof payload.usage === 'object') {
       const usage = payload.usage;
@@ -3753,8 +3906,8 @@ body {
         if (remaining !== null && limit !== null) used = limit - remaining;
       }
       if (used !== null || limit !== null) {
-        const resetAt = usage.reset_at || usage.resetAt || usage.reset_time || usage.resetTime;
-        rows.push(quotaRow('Weekly Limit', used, limit, resetAt, null));
+        const resetMs = extractKimiResetMs(usage, null);
+        rows.push(quotaRow('Weekly Limit', used, limit, resetMs, null));
       }
     }
     rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -3763,12 +3916,13 @@ body {
 
   async function fetchKimiQuota(file, authIndex) {
     try {
+      const quotaUrl = await resolveKimiQuotaUrl(file);
       const res = await apiFetch('/v0/management/api-call', {
         method: 'POST',
         body: JSON.stringify({
           authIndex: authIndex,
           method: 'GET',
-          url: 'https://api.kimi.com/coding/v1/usages',
+          url: quotaUrl,
           header: { Authorization: 'Bearer $TOKEN$' },
         }),
       });
@@ -3870,6 +4024,68 @@ body {
     return '';
   }
 
+  const XAI_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user?include=subscription';
+  const XAI_SETTINGS_URL = 'https://cli-chat-proxy.grok.com/v1/settings';
+
+  function resolveXaiSubscriptionPlan(tier, display) {
+    const label = (typeof display === 'string' && display.trim()) || (typeof tier === 'string' && tier.trim()) || null;
+    if (!label) return null;
+    const key = `${display || ''} ${tier || ''}`.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const planTier = key.includes('heavy')
+      ? 'elite'
+      : (key.includes('supergrok') || key.includes('premium') ? 'premium' : 'standard');
+    return { label, tier: planTier };
+  }
+
+  async function requestXaiSubscription(authIndex, headers) {
+    try {
+      const [userSettled, settingsSettled] = await Promise.allSettled([
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex,
+            method: 'GET',
+            url: XAI_USER_URL,
+            header: headers,
+          }),
+        }),
+        apiFetch('/v0/management/api-call', {
+          method: 'POST',
+          body: JSON.stringify({
+            authIndex,
+            method: 'GET',
+            url: XAI_SETTINGS_URL,
+            header: headers,
+          }),
+        }),
+      ]);
+
+      let userObj = null;
+      if (userSettled.status === 'fulfilled' && userSettled.value.ok) {
+        try {
+          const res = await userSettled.value.json();
+          const call = unwrapApiCall(res);
+          userObj = call.ok ? call.body : null;
+        } catch (e) {}
+      }
+
+      let settingsObj = null;
+      if (settingsSettled.status === 'fulfilled' && settingsSettled.value.ok) {
+        try {
+          const res = await settingsSettled.value.json();
+          const call = unwrapApiCall(res);
+          settingsObj = call.ok ? call.body : null;
+        } catch (e) {}
+      }
+
+      const tier = userObj?.subscriptionTier || userObj?.subscription_tier;
+      const display = settingsObj?.subscription_tier_display || settingsObj?.subscriptionTierDisplay;
+      return resolveXaiSubscriptionPlan(tier, display);
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function fetchXaiBillingConfig(authIndex, url, headers) {
     const res = await apiFetch('/v0/management/api-call', {
       method: 'POST',
@@ -3906,11 +4122,13 @@ body {
       const results = await Promise.allSettled([
         fetchXaiBillingConfig(authIndex, 'https://cli-chat-proxy.grok.com/v1/billing?format=credits', headers),
         fetchXaiBillingConfig(authIndex, 'https://cli-chat-proxy.grok.com/v1/billing', headers),
+        requestXaiSubscription(authIndex, headers),
       ]);
       const billing = mergeXaiBilling(
         results[0].status === 'fulfilled' ? results[0].value : null,
         results[1].status === 'fulfilled' ? results[1].value : null,
       );
+      const subscription = results[2].status === 'fulfilled' ? results[2].value : null;
 
       if (billing) {
         const rows = [];
@@ -3957,9 +4175,12 @@ body {
           });
         });
 
+        const planName = subscription ? subscription.label : xaiPlanName(billing);
+
         quotaStore[file.name] = {
           loading: false,
-          plan: xaiPlanName(billing),
+          plan: planName,
+          subscriptionPlan: subscription,
           groups: [{
             title: 'GROK BILLING',
             models: 'Grok / xAI',
@@ -4723,12 +4944,34 @@ body {
       ? `<span class="xai-token-warn-badge" title="La actualización de cuota consume tokens">⚠️ Consume tokens</span>`
       : '';
 
-    const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo) ? `
+    let codexBadges = '';
+    if (provider === 'codex' || provider === 'unknown') {
+      if (quota.credits) {
+        if (quota.credits.unlimited) {
+          codexBadges += `<span class="plan-badge codex-credits-badge" title="Unlimited credits">♾️ Unlimited</span>`;
+        } else if (quota.credits.balance !== null) {
+          codexBadges += `<span class="plan-badge codex-credits-badge" title="Account credit balance">🪙 ${escapeHtml(quota.credits.balance)}</span>`;
+        }
+      }
+      if (quota.subscriptionActiveUntil) {
+        const activeMs = typeof quota.subscriptionActiveUntil === 'number'
+          ? (quota.subscriptionActiveUntil < 1e11 ? quota.subscriptionActiveUntil * 1000 : quota.subscriptionActiveUntil)
+          : Date.parse(quota.subscriptionActiveUntil);
+        if (activeMs && !isNaN(activeMs)) {
+          const d = new Date(activeMs);
+          const dateStr = d.toLocaleDateString();
+          codexBadges += `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">Exp: ${escapeHtml(dateStr)}</span>`;
+        }
+      }
+    }
+
+    const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
           <div class="plan-row">
             <span>${planLabel ? 'Plan' : 'Credits'}</span>
             <div class="plan-badges">
               ${planLabel ? `<span class="plan-badge">${escapeHtml(planLabel)}</span>` : ''}
               ${resetCreditsBadge}
+              ${codexBadges}
               ${xaiWarnBadge}
             </div>
           </div>` : '';
