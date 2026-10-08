@@ -112,6 +112,24 @@ func TestResolveMIMEType(t *testing.T) {
 	}
 }
 
+func TestEmbeddedDashboard_ContainsUIPreferencesStore(t *testing.T) {
+	data, _, err := web.GetAsset("index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	html := string(data)
+	for _, requirement := range []string{
+		"cca-ui-prefs",
+		"function loadUiPrefs",
+		"function saveUiPrefs",
+	} {
+		if !strings.Contains(html, requirement) {
+			t.Errorf("expected dashboard to contain %q", requirement)
+		}
+	}
+}
+
 func TestEmbeddedDashboard_ParsesCodexUsageInsteadOfHardcodingFullQuota(t *testing.T) {
 	data, _, err := web.GetAsset("index.html")
 	if err != nil {
