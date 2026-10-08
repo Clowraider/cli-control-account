@@ -3253,11 +3253,48 @@ body {
       const pWin = rateLimit.primary_window || rateLimit.primaryWindow;
       const sWin = rateLimit.secondary_window || rateLimit.secondaryWindow;
 
-      const pRow = processWindow(pWin, 'Five Hour Limit', limitReached, allowed);
-      if (pRow) rows.push(pRow);
+      // Parity with CPAMC (src/features/quota/providers/codex/data.ts): classify windows by duration first, then use order for legacy payloads.
+      const FIVE_HOUR_SECONDS = 18000;
+      const WEEK_SECONDS = 604800;
+      const MIN_MONTH_SECONDS = 28 * 24 * 60 * 60;
+      const MAX_MONTH_SECONDS = 31 * 24 * 60 * 60;
+      const getWindowSeconds = windowObj => {
+        const raw = windowObj?.limit_window_seconds ?? windowObj?.limitWindowSeconds;
+        if (raw === undefined || raw === null || raw === '') return null;
+        const seconds = Number(raw);
+        return Number.isFinite(seconds) ? seconds : null;
+      };
+      const isMonthlyWindow = windowObj => {
+        const seconds = getWindowSeconds(windowObj);
+        return seconds !== null && seconds >= MIN_MONTH_SECONDS && seconds <= MAX_MONTH_SECONDS;
+      };
+      const rawWindows = [pWin, sWin];
+      let fiveHourWindow = null;
+      let weeklyWindow = null;
+      for (const windowObj of rawWindows) {
+        if (!windowObj) continue;
+        const seconds = getWindowSeconds(windowObj);
+        if (seconds === FIVE_HOUR_SECONDS && !fiveHourWindow) {
+          fiveHourWindow = windowObj;
+        } else if ((seconds === WEEK_SECONDS || isMonthlyWindow(windowObj)) && !weeklyWindow) {
+          weeklyWindow = windowObj;
+        }
+      }
+      if (!fiveHourWindow) fiveHourWindow = pWin && pWin !== weeklyWindow ? pWin : null;
+      if (!weeklyWindow) weeklyWindow = sWin && sWin !== fiveHourWindow ? sWin : null;
 
-      const sRow = processWindow(sWin, 'Weekly Limit', limitReached, allowed);
-      if (sRow) rows.push(sRow);
+      // Preserve limit-only rows only when neither window exists in the payload.
+      const noWindows = !pWin && !sWin;
+      const fiveHourRow = (fiveHourWindow || noWindows) ? processWindow(
+        fiveHourWindow || pWin, 'Five Hour Limit', limitReached, allowed
+      ) : null;
+      if (fiveHourRow) rows.push(fiveHourRow);
+
+      const weeklyLabel = isMonthlyWindow(weeklyWindow) ? 'Monthly Limit' : 'Weekly Limit';
+      const weeklyRow = (weeklyWindow || noWindows) ? processWindow(
+        weeklyWindow || sWin, weeklyLabel, limitReached, allowed
+      ) : null;
+      if (weeklyRow) rows.push(weeklyRow);
     }
 
     if (codeReviewLimit) {
