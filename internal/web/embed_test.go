@@ -123,6 +123,9 @@ func TestEmbeddedDashboard_ContainsUIPreferencesStore(t *testing.T) {
 		"cca-ui-prefs",
 		"function loadUiPrefs",
 		"function saveUiPrefs",
+		"btn-hide-emails",
+		"function maskIdentity",
+		"hideEmails",
 	} {
 		if !strings.Contains(html, requirement) {
 			t.Errorf("expected dashboard to contain %q", requirement)

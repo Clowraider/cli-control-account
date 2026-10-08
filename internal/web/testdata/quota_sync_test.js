@@ -28,6 +28,10 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     fetchCodexQuota,
     loadUiPrefs,
     saveUiPrefs,
+    maskIdentity,
+    displayIdentity,
+    setHideEmails,
+    getHideEmails: () => hideEmails,
     parseIdTokenPayload,
     extractCodexPlanType,
     extractCodexChatgptAccountId,
@@ -85,6 +89,10 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
         title: '',
         disabled: false,
         dataset: {},
+        attributes: {},
+        setAttribute(name, value) {
+          this.attributes[name] = String(value);
+        },
         classList: {
           add: (...cls) => cls.forEach(c => classSet.add(c)),
           remove: (...cls) => cls.forEach(c => classSet.delete(c)),
@@ -170,14 +178,14 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest' });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -189,7 +197,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
   }
 });
 
@@ -201,6 +209,50 @@ test('saving UI preferences merges fields and preserves unknown keys', () => {
   assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), {
     v: 1, tab: 'claude', sort: 'az', future: { enabled: true },
   });
+});
+
+test('hide email preference restores only boolean true', () => {
+  const enabled = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, hideEmails: true }) },
+  });
+  assert.equal(enabled.loadUiPrefs().hideEmails, true);
+
+  const invalid = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, hideEmails: 'true' }) },
+  });
+  assert.equal(invalid.loadUiPrefs().hideEmails, false);
+});
+
+test('setHideEmails persists the setting while preserving tab and sort', () => {
+  const dashboard = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
+  });
+  dashboard.setHideEmails(true);
+  assert.equal(dashboard.getHideEmails(), true);
+  assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), {
+    v: 1, tab: 'codex', sort: 'soonest', hideEmails: true,
+  });
+});
+
+test('maskIdentity keeps two characters and appends a fixed mask', () => {
+  const dashboard = loadDashboard();
+  assert.equal(dashboard.maskIdentity('elmaekem@gmail.com'), 'el*******');
+  assert.equal(dashboard.maskIdentity('luis09d.fpv@gmail.com'), 'lu*******');
+  assert.equal(dashboard.maskIdentity('ab'), '*******');
+  assert.equal(dashboard.maskIdentity('a'), '*******');
+  assert.equal(dashboard.maskIdentity(null), '');
+  assert.equal(dashboard.maskIdentity(''), '');
+});
+
+test('renderCard masks identity text and title only when enabled', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'luis09d.fpv@gmail.com.json', provider: 'codex', email: 'luis09d.fpv@gmail.com' };
+  const raw = dashboard.renderCard(file);
+  assert.match(raw, /title="luis09d\.fpv@gmail\.com\.json"[^>]*>luis09d\.fpv@gmail\.com/);
+
+  dashboard.setHideEmails(true);
+  const masked = dashboard.renderCard(file);
+  assert.match(masked, /title="lu\*\*\*\*\*\*\*"[^>]*>lu\*\*\*\*\*\*\*/);
 });
 
 test('saving UI preferences replaces malformed stored JSON', () => {
@@ -219,7 +271,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
