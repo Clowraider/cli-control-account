@@ -6,7 +6,7 @@ import "strings"
 // It is the single source of truth for plugin versioning.
 // In release builds, this value can be injected/overridden via:
 // -ldflags "-X control-account/internal/version.Version=x.y.z"
-var Version = "0.6.2"
+var Version = "0.6.3"
 
 func init() {
 	// Ensure version string never retains a leading 'v' so that
