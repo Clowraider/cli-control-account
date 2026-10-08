@@ -19,6 +19,7 @@ type Worker struct {
 	storage    *Storage
 	queue      chan EgoEvent
 	stopCh     chan struct{}
+	stopOnce   sync.Once
 	wg         sync.WaitGroup
 	enabled    atomic.Bool
 	flushEvery time.Duration
@@ -72,11 +73,22 @@ func (w *Worker) Start() {
 }
 
 // Stop signals the worker to finish flushing queued events and close storage.
+// It is safe to call more than once.
 func (w *Worker) Stop() {
-	close(w.stopCh)
-	w.wg.Wait()
-	if w.storage != nil {
-		_ = w.storage.Close()
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+		w.wg.Wait()
+		if w.storage != nil {
+			_ = w.storage.Close()
+		}
+	})
+}
+
+// ShutdownWorker stops the singleton worker if it was ever started, flushing
+// any queued events to disk. It never initializes the worker.
+func ShutdownWorker() {
+	if w := globalWorker; w != nil {
+		w.Stop()
 	}
 }
 
