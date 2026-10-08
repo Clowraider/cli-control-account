@@ -2101,10 +2101,44 @@ body {
 
   let currentTab = 'all';
   let currentSort = 'prefix-asc';
+  const UI_PREFS_KEY = 'cca-ui-prefs';
+  const UI_PREF_TABS = ['all', 'claude', 'antigravity', 'codex', 'xai', 'kimi'];
+  const UI_PREF_SORTS = ['prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
   let authFiles = [];
   let apiKeyUsage = {};
   let quotaStore = {};
   let serverTimeOffsetMs = 0;
+
+  function loadUiPrefs() {
+    const defaults = { tab: 'all', sort: 'prefix-asc' };
+    try {
+      const raw = localStorage.getItem(UI_PREFS_KEY);
+      if (!raw) return defaults;
+      const prefs = JSON.parse(raw);
+      if (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) return defaults;
+      return {
+        tab: UI_PREF_TABS.includes(prefs.tab) ? prefs.tab : defaults.tab,
+        sort: UI_PREF_SORTS.includes(prefs.sort) ? prefs.sort : defaults.sort,
+      };
+    } catch (e) {
+      return defaults;
+    }
+  }
+
+  function saveUiPrefs(patch) {
+    try {
+      const raw = localStorage.getItem(UI_PREFS_KEY);
+      let prefs = {};
+      if (raw) {
+        let parsed = null;
+        try { parsed = JSON.parse(raw); } catch (e) {}
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) prefs = parsed;
+      }
+      Object.assign(prefs, patch && typeof patch === 'object' ? patch : {});
+      prefs.v = 1;
+      localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
+    } catch (e) {}
+  }
 
   function syncServerTimeOffset(result) {
     if (!result || typeof result !== 'object') return;
@@ -2264,6 +2298,14 @@ body {
   }
 
   function init() {
+    const prefs = loadUiPrefs();
+    currentTab = prefs.tab;
+    currentSort = prefs.sort;
+    if (sortSelect) sortSelect.value = currentSort;
+    document.querySelectorAll('.tab-item').forEach(tab => {
+      const active = tab.dataset.provider.toLowerCase() === currentTab;
+      tab.classList.toggle('active', active);
+    });
     setupTabListeners();
     setupSortListener();
     setupModalListeners();
@@ -2414,6 +2456,7 @@ body {
         document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentTab = tab.dataset.provider.toLowerCase();
+        saveUiPrefs({ tab: currentTab });
         renderThroughputPanel();
         render();
       });
@@ -2424,6 +2467,7 @@ body {
     if (sortSelect) {
       sortSelect.addEventListener('change', (e) => {
         currentSort = e.target.value;
+        saveUiPrefs({ sort: currentSort });
         render();
       });
     }

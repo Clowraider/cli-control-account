@@ -12,7 +12,7 @@ function createJwt(payload) {
   return `${header}.${body}.signature`;
 }
 
-function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), pluginVersion = '1.0.0') {
+function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), pluginVersion = '1.0.0', storageOptions = {}) {
   let html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
   html = html.replaceAll('__PLUGIN_VERSION__', pluginVersion);
   const scriptMatch = html.match(/<script>\s*(\(function \(\) \{[\s\S]*?\}\)\(\);)\s*<\/script>/);
@@ -26,6 +26,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   const exposure = `globalThis.__dashboardTest = {
     fetchClaudeQuota,
     fetchCodexQuota,
+    loadUiPrefs,
+    saveUiPrefs,
     parseIdTokenPayload,
     extractCodexPlanType,
     extractCodexChatgptAccountId,
@@ -55,10 +57,21 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   const source = scriptMatch[1].replace(bootstrap, exposure);
   assert.notEqual(source, scriptMatch[1], 'dashboard bootstrap must be replaced for testing');
 
+  const storageData = new Map(Object.entries(storageOptions.initialStorage || {}));
   const storage = {
-    getItem: key => key === 'cli-proxy-auth'
-      ? JSON.stringify({ state: { managementKey: 'test-key' } })
-      : null,
+    getItem(key) {
+      if (storageOptions.throwOnGet) throw new Error('storage get failed');
+      return key === 'cli-proxy-auth'
+        ? JSON.stringify({ state: { managementKey: 'test-key' } })
+        : (storageData.has(key) ? storageData.get(key) : null);
+    },
+    setItem(key, value) {
+      if (storageOptions.throwOnSet) throw new Error('storage set failed');
+      storageData.set(key, String(value));
+    },
+    removeItem(key) {
+      storageData.delete(key);
+    },
   };
   const elements = new Map();
   function getOrCreateElement(id) {
@@ -140,6 +153,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   };
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: 'index.html' });
+  context.__dashboardTest.storageData = storageData;
   context.__dashboardTest.elements = elements;
   context.__dashboardTest.getElement = getOrCreateElement;
   context.__dashboardTest.getLastOpenedWindow = () => lastOpenedWindow;
@@ -153,6 +167,60 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   };
   return context.__dashboardTest;
 }
+
+test('UI preferences default on empty storage', () => {
+  const dashboard = loadDashboard();
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+});
+
+test('UI preferences restore valid stored values', () => {
+  const dashboard = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest' });
+});
+
+test('UI preferences reject invalid values and malformed JSON', () => {
+  const invalidValues = [
+    JSON.stringify({ v: 1, tab: 'unknown', sort: 'unknown' }),
+    '{not json',
+  ];
+  for (const value of invalidValues) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': value },
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+  }
+});
+
+test('saving UI preferences merges fields and preserves unknown keys', () => {
+  const dashboard = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'claude', future: { enabled: true } }) },
+  });
+  dashboard.saveUiPrefs({ sort: 'az' });
+  assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), {
+    v: 1, tab: 'claude', sort: 'az', future: { enabled: true },
+  });
+});
+
+test('saving UI preferences replaces malformed stored JSON', () => {
+  const dashboard = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': '{not json' },
+  });
+  dashboard.saveUiPrefs({ tab: 'kimi' });
+  assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), { v: 1, tab: 'kimi' });
+});
+
+test('saving UI preferences does not throw when storage write fails', () => {
+  const dashboard = loadDashboard(undefined, undefined, { throwOnSet: true });
+  assert.doesNotThrow(() => dashboard.saveUiPrefs({ tab: 'xai' }));
+});
+
+test('loading UI preferences does not throw when storage read fails', () => {
+  const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
+  assert.doesNotThrow(() => dashboard.loadUiPrefs());
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc' });
+});
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
   const dashboard = loadDashboard();
