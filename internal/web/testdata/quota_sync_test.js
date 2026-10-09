@@ -28,6 +28,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     fetchCodexQuota,
     loadUiPrefs,
     saveUiPrefs,
+    isLowQuota: (row) => isLowQuota(row),
+    setLowQuotaThreshold: (value) => { lowQuotaThreshold = value; },
     maskIdentity,
     displayIdentity,
     setHideEmails,
@@ -178,14 +180,14 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false, lowQuotaThreshold: 20 });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -197,7 +199,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
   }
 });
 
@@ -209,6 +211,30 @@ test('saving UI preferences merges fields and preserves unknown keys', () => {
   assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), {
     v: 1, tab: 'claude', sort: 'az', future: { enabled: true },
   });
+});
+
+test('low quota threshold accepts only the numeric allowlist and persists', () => {
+  for (const value of [10, 20, 30, 50, 0, 25, '30', null]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ lowQuotaThreshold: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().lowQuotaThreshold, [10, 20, 30, 50].includes(value) ? value : 20);
+    dashboard.saveUiPrefs({ lowQuotaThreshold: 30 });
+    assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).lowQuotaThreshold, 30);
+  }
+});
+
+test('low quota warnings follow the current threshold without changing cached rows', () => {
+  const dashboard = loadDashboard();
+  const row = { percent: 25, warning: false };
+  assert.equal(dashboard.isLowQuota(row), false);
+  dashboard.setLowQuotaThreshold(30);
+  assert.equal(dashboard.isLowQuota(row), true);
+  assert.equal(dashboard.isLowQuota({ percent: 30 }), false);
+  assert.equal(dashboard.isLowQuota({ percent: 0, warning: true }), true);
+  assert.equal(dashboard.isLowQuota({ percent: null, warning: false }), false);
+  dashboard.setLowQuotaThreshold(20);
+  assert.equal(dashboard.isLowQuota(row), false);
 });
 
 test('hide email preference restores only boolean true', () => {
@@ -271,7 +297,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
