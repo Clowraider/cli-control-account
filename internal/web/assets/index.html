@@ -1842,20 +1842,20 @@ body {
           <span id="count-kimi" class="tab-count">0</span>
         </button>
       </nav>
-      <button id="btn-low-quota" type="button" class="btn-hide-emails" aria-pressed="false">Low quota</button>
-      <button id="btn-favorites" type="button" class="btn-hide-emails" aria-pressed="false">Favorites</button>
-      <select id="low-quota-threshold" class="sort-select" aria-label="Low quota threshold" title="Low quota threshold">
+      <button id="btn-favorites" type="button" class="btn-hide-emails" aria-pressed="false" title="Show only favorite accounts">Favorites</button>
+      <button id="btn-low-quota" type="button" class="btn-hide-emails" aria-pressed="false" title="Show only accounts whose lowest weekly quota is below the threshold">Low quota</button>
+      <select id="low-quota-threshold" class="sort-select" style="display: none;" aria-label="Low quota threshold" title="Weekly remaining quota considered low">
         <option value="10">10%</option>
         <option value="20" selected>20%</option>
         <option value="30">30%</option>
         <option value="50">50%</option>
       </select>
 
-      <input type="search" id="account-search" class="sort-select" style="margin-right: auto;" placeholder="Search accounts" aria-label="Search accounts">
+      <input type="search" id="account-search" class="sort-select" style="margin-right: auto;" placeholder="Search shown accounts" aria-label="Search shown accounts" title="Filter the accounts currently shown by name, email or prefix">
 
       <div class="sort-wrap">
         <button id="btn-hide-emails" type="button" class="btn-hide-emails" aria-pressed="false" title="Mask email addresses on the cards">Hide emails</button>
-        <select id="sort-select" class="sort-select" aria-label="Sort options">
+        <select id="sort-select" class="sort-select" aria-label="Sort options" title="Card order">
           <option value="prefix-asc" selected>Prefix (A-Z)</option>
           <option value="fav-first">Favorites first</option>
           <option value="prefix-desc">Prefix (Z-A)</option>
@@ -2354,6 +2354,7 @@ body {
     lowQuotaOnly = !lowQuotaOnly;
     btnLowQuota.setAttribute('aria-pressed', String(lowQuotaOnly));
     btnLowQuota.classList.toggle('active', lowQuotaOnly);
+    thresholdSelect.style.display = lowQuotaOnly ? '' : 'none';
     render();
   });
   const btnFavorites = document.getElementById('btn-favorites');
@@ -5193,7 +5194,7 @@ body {
               ${editBtn}
             </div>
           </div>
-          <button type="button" class="btn-hide-emails btn-favorite" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
+          <button type="button" class="btn-hide-emails btn-favorite" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
         </header>
 
         <div class="card-body">
