@@ -1842,6 +1842,7 @@ body {
           <span id="count-kimi" class="tab-count">0</span>
         </button>
       </nav>
+      <button id="btn-low-quota" type="button" class="btn-hide-emails" aria-pressed="false">Low quota</button>
       <select id="low-quota-threshold" class="sort-select" style="margin-right: auto;" aria-label="Low quota threshold" title="Low quota threshold">
         <option value="10">10%</option>
         <option value="20" selected>20%</option>
@@ -2138,6 +2139,24 @@ body {
   const UI_PREF_SORTS = ['prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
   const UI_PREF_THRESHOLDS = [10, 20, 30, 50];
   let lowQuotaThreshold = 20;
+  let lowQuotaOnly = false;
+
+  function lowestWeeklyPercent(quota) {
+    let lowest = null;
+    for (const group of quota?.groups || []) {
+      for (const row of group.rows || []) {
+        if (row.weekly === true && Number.isFinite(row.percent)) {
+          lowest = lowest === null ? row.percent : Math.min(lowest, row.percent);
+        }
+      }
+    }
+    return lowest;
+  }
+
+  function isLowQuotaAccount(quota) {
+    const percent = lowestWeeklyPercent(quota);
+    return percent !== null && percent < lowQuotaThreshold;
+  }
 
   function isLowQuota(row) {
     return row.percent !== null && row.percent !== undefined && !isNaN(row.percent)
@@ -2323,6 +2342,13 @@ body {
   const grid = document.getElementById('cards-grid');
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   const sortSelect = document.getElementById('sort-select');
+  const btnLowQuota = document.getElementById('btn-low-quota');
+  btnLowQuota.addEventListener('click', () => {
+    lowQuotaOnly = !lowQuotaOnly;
+    btnLowQuota.setAttribute('aria-pressed', String(lowQuotaOnly));
+    btnLowQuota.classList.toggle('active', lowQuotaOnly);
+    render();
+  });
   const thresholdSelect = document.getElementById('low-quota-threshold');
   const btnHideEmails = document.getElementById('btn-hide-emails');
 
@@ -3067,6 +3093,7 @@ body {
         return {
           label: label,
           window: b.window,
+          weekly: `${labelLower} ${b.window || ''}`.toLowerCase().includes('week'),
           percent: percent,
           percentLabel: percentLabel,
           resetLabel: finalResetLabel,
@@ -3206,6 +3233,7 @@ body {
 
               rows.push({
                 label: def.label,
+                weekly: def.key === 'seven_day',
                 percent: pct,
                 percentLabel: percentLabel,
                 resetLabel: resetLabel,
@@ -3389,7 +3417,10 @@ body {
       if (pRow) rows.push(pRow);
 
       const sRow = processWindow(sWin, 'Weekly Limit', limitReached, allowed);
-      if (sRow) rows.push(sRow);
+      if (sRow) {
+        sRow.weekly = true;
+        rows.push(sRow);
+      }
     }
 
     if (codeReviewLimit) {
@@ -4027,7 +4058,7 @@ body {
       if (used === null && limit === null) return;
       const resetMs = extractKimiResetMs(detail, item);
       const label = kimiWindowLabel(item, detail, windowObj, index);
-      rows.push(quotaRow(label, used, limit, resetMs, null));
+      rows.push({ ...quotaRow(label, used, limit, resetMs, null), weekly: label === 'Weekly Limit' });
     });
     if (payload.usage && typeof payload.usage === 'object') {
       const usage = payload.usage;
@@ -4039,7 +4070,7 @@ body {
       }
       if (used !== null || limit !== null) {
         const resetMs = extractKimiResetMs(usage, null);
-        rows.push(quotaRow('Weekly Limit', used, limit, resetMs, null));
+        rows.push({ ...quotaRow('Weekly Limit', used, limit, resetMs, null), weekly: true });
       }
     }
     rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -4270,6 +4301,7 @@ body {
             const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
             rows.push({
               label: 'Weekly Limit',
+              weekly: true,
               percent: remaining,
               percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
               resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
@@ -4279,6 +4311,7 @@ body {
           } else {
             rows.push({
               label: 'Weekly Limit',
+              weekly: true,
               percent: null,
               percentLabel: 'No data',
               resetLabel: resetInfo.ms ? resetInfo.label : 'No quota data',
@@ -4925,9 +4958,8 @@ body {
   function render() {
     const filtered = authFiles.filter(f => {
       if (f.disabled) return false;
-      if (currentTab === 'all') return true;
-      const p = resolveProvider(f);
-      return p === currentTab;
+      if (currentTab !== 'all' && resolveProvider(f) !== currentTab) return false;
+      return !lowQuotaOnly || isLowQuotaAccount(quotaStore[f.name]);
     });
 
     const sorted = sortFiles(filtered);

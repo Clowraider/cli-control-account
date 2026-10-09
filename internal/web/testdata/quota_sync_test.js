@@ -25,6 +25,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   }`;
   const exposure = `globalThis.__dashboardTest = {
     fetchClaudeQuota,
+    lowestWeeklyPercent,
+    isLowQuotaAccount,
     fetchCodexQuota,
     loadUiPrefs,
     saveUiPrefs,
@@ -177,6 +179,29 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   };
   return context.__dashboardTest;
 }
+
+test('weekly minimum spans groups and ignores non-weekly or non-finite data', () => {
+  const dashboard = loadDashboard();
+  assert.equal(dashboard.lowestWeeklyPercent({ groups: [
+    { rows: [{ weekly: true, percent: 35 }, { percent: 0 }] },
+    { rows: [{ weekly: true, percent: 15 }, { weekly: true, percent: null }, { weekly: true, percent: Infinity }] },
+  ] }), 15);
+  for (const quota of [undefined, {}, { groups: [{ rows: [{ percent: 0 }] }] },
+    { groups: [{ rows: [{ weekly: true, percent: null }, { weekly: true }] }] }]) {
+    assert.equal(dashboard.lowestWeeklyPercent(quota), null);
+    assert.equal(dashboard.isLowQuotaAccount(quota), false);
+  }
+});
+
+test('low quota accounts use a strict weekly threshold', () => {
+  const dashboard = loadDashboard();
+  const quota = percent => ({ groups: [{ rows: [{ weekly: true, percent }] }] });
+  assert.equal(dashboard.isLowQuotaAccount(quota(19)), true);
+  assert.equal(dashboard.isLowQuotaAccount(quota(20)), false);
+  dashboard.setLowQuotaThreshold(30);
+  assert.equal(dashboard.isLowQuotaAccount(quota(20)), true);
+  assert.equal(dashboard.isLowQuotaAccount(quota(30)), false);
+});
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
@@ -591,6 +616,9 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
 
   // Critical regression test: utilization 2% should result in 98% remaining, NOT 0%
   const weeklyRow = rows.find(r => r.label === 'Weekly Limit');
+  assert.equal(weeklyRow.weekly, true);
+  assert.equal(rows.find(r => r.label === 'Fable Limit').weekly, false);
+  assert.equal(opusRow.weekly, false);
   assert.equal(weeklyRow.percent, 98);
   assert.equal(weeklyRow.percentLabel, '98% remaining');
   assert.equal(weeklyRow.warning, false);
