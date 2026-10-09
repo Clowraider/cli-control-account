@@ -1843,17 +1843,21 @@ body {
         </button>
       </nav>
       <button id="btn-low-quota" type="button" class="btn-hide-emails" aria-pressed="false">Low quota</button>
-      <select id="low-quota-threshold" class="sort-select" style="margin-right: auto;" aria-label="Low quota threshold" title="Low quota threshold">
+      <button id="btn-favorites" type="button" class="btn-hide-emails" aria-pressed="false">Favorites</button>
+      <select id="low-quota-threshold" class="sort-select" aria-label="Low quota threshold" title="Low quota threshold">
         <option value="10">10%</option>
         <option value="20" selected>20%</option>
         <option value="30">30%</option>
         <option value="50">50%</option>
       </select>
 
+      <input type="search" id="account-search" class="sort-select" style="margin-right: auto;" placeholder="Search accounts" aria-label="Search accounts">
+
       <div class="sort-wrap">
         <button id="btn-hide-emails" type="button" class="btn-hide-emails" aria-pressed="false" title="Mask email addresses on the cards">Hide emails</button>
         <select id="sort-select" class="sort-select" aria-label="Sort options">
           <option value="prefix-asc" selected>Prefix (A-Z)</option>
+          <option value="fav-first">Favorites first</option>
           <option value="prefix-desc">Prefix (Z-A)</option>
           <option value="soonest">Soonest recovery</option>
           <option value="az">A-Z Name</option>
@@ -2136,10 +2140,12 @@ body {
   let hideEmails = false;
   const UI_PREFS_KEY = 'cca-ui-prefs';
   const UI_PREF_TABS = ['all', 'claude', 'antigravity', 'codex', 'xai', 'kimi'];
-  const UI_PREF_SORTS = ['prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
+  const UI_PREF_SORTS = ['fav-first', 'prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
   const UI_PREF_THRESHOLDS = [10, 20, 30, 50];
   let lowQuotaThreshold = 20;
   let lowQuotaOnly = false;
+  let favorites = [];
+  let favoritesOnly = false;
 
   function lowestWeeklyPercent(quota) {
     let lowest = null;
@@ -2169,7 +2175,7 @@ body {
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
-    const defaults = { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 };
+    const defaults = { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] };
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (!raw) return defaults;
@@ -2179,6 +2185,7 @@ body {
         tab: UI_PREF_TABS.includes(prefs.tab) ? prefs.tab : defaults.tab,
         sort: UI_PREF_SORTS.includes(prefs.sort) ? prefs.sort : defaults.sort,
         hideEmails: prefs.hideEmails === true,
+        favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
         lowQuotaThreshold: UI_PREF_THRESHOLDS.includes(prefs.lowQuotaThreshold) ? prefs.lowQuotaThreshold : defaults.lowQuotaThreshold,
       };
     } catch (e) {
@@ -2349,6 +2356,15 @@ body {
     btnLowQuota.classList.toggle('active', lowQuotaOnly);
     render();
   });
+  const btnFavorites = document.getElementById('btn-favorites');
+  btnFavorites.addEventListener('click', () => {
+    favoritesOnly = !favoritesOnly;
+    btnFavorites.setAttribute('aria-pressed', String(favoritesOnly));
+    btnFavorites.classList.toggle('active', favoritesOnly);
+    render();
+  });
+  const accountSearch = document.getElementById('account-search');
+  accountSearch.addEventListener('input', () => render());
   const thresholdSelect = document.getElementById('low-quota-threshold');
   const btnHideEmails = document.getElementById('btn-hide-emails');
 
@@ -2398,6 +2414,7 @@ body {
 
   function init() {
     const prefs = loadUiPrefs();
+    favorites = prefs.favorites;
     currentTab = prefs.tab;
     currentSort = prefs.sort;
     hideEmails = prefs.hideEmails;
@@ -2797,6 +2814,12 @@ body {
       primary: primary,
       fullName: fullName,
     };
+  }
+
+  function matchesAccountSearch(file, query) {
+    const search = String(query || '').toLowerCase();
+    return [deriveIdentity(file).primary, file.email, file.prefix, file.name]
+      .some(value => String(value || '').toLowerCase().includes(search));
   }
 
   function resolveProvider(file) {
@@ -4756,8 +4779,12 @@ body {
       });
     }
 
-    if (currentSort === 'prefix-asc') {
+    if (currentSort === 'prefix-asc' || currentSort === 'fav-first') {
       return [...list].sort((a, b) => {
+        if (currentSort === 'fav-first') {
+          const favoriteOrder = Number(favorites.includes(b.name)) - Number(favorites.includes(a.name));
+          if (favoriteOrder) return favoriteOrder;
+        }
         const pA = (a.prefix || '').trim();
         const pB = (b.prefix || '').trim();
         const hasA = pA.length > 0;
@@ -4959,7 +4986,9 @@ body {
     const filtered = authFiles.filter(f => {
       if (f.disabled) return false;
       if (currentTab !== 'all' && resolveProvider(f) !== currentTab) return false;
-      return !lowQuotaOnly || isLowQuotaAccount(quotaStore[f.name]);
+      return (!lowQuotaOnly || isLowQuotaAccount(quotaStore[f.name]))
+        && (!favoritesOnly || favorites.includes(f.name))
+        && matchesAccountSearch(f, accountSearch.value);
     });
 
     const sorted = sortFiles(filtered);
@@ -4984,6 +5013,15 @@ body {
           toggleFileStatus(file, !isEnabled, switchInput);
         });
       }
+    });
+
+    grid.querySelectorAll('.btn-favorite').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.filename;
+        favorites = favorites.includes(name) ? favorites.filter(value => value !== name) : [...favorites, name];
+        saveUiPrefs({ favorites });
+        render();
+      });
     });
 
     grid.querySelectorAll('.btn-edit-prefix').forEach(btn => {
@@ -5155,6 +5193,7 @@ body {
               ${editBtn}
             </div>
           </div>
+          <button type="button" class="btn-hide-emails btn-favorite" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
         </header>
 
         <div class="card-body">

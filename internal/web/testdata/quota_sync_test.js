@@ -24,6 +24,10 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     init();
   }`;
   const exposure = `globalThis.__dashboardTest = {
+    matchesAccountSearch,
+    sortFiles,
+    setFavorites: (value) => { favorites = value; },
+    setSort: (value) => { currentSort = value; },
     fetchClaudeQuota,
     lowestWeeklyPercent,
     isLowQuotaAccount,
@@ -203,16 +207,54 @@ test('low quota accounts use a strict weekly threshold', () => {
   assert.equal(dashboard.isLowQuotaAccount(quota(30)), false);
 });
 
+test('favorites sanitize, round-trip, and accept fav-first sorting', () => {
+  for (const [value, expected] of [[['one', 3, null, 'two'], ['one', 'two']], ['bad', []], [null, []]]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ favorites: value, sort: 'fav-first' }) },
+    });
+    assert.deepEqual(Array.from(dashboard.loadUiPrefs().favorites), expected);
+    assert.equal(dashboard.loadUiPrefs().sort, 'fav-first');
+    dashboard.saveUiPrefs({ favorites: ['saved.json'] });
+    assert.deepEqual(Array.from(dashboard.loadUiPrefs().favorites), ['saved.json']);
+  }
+});
+
+test('search matches raw identity, prefix and filename but never account secrets', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'Credential.json', email: 'Person@Example.com', prefix: 'Work', account: 'secret-only-value' };
+  for (const query of ['', 'PERSON@', 'work', 'CREDENTIAL.JSON']) {
+    assert.equal(dashboard.matchesAccountSearch(file, query), true);
+  }
+  dashboard.setHideEmails(true);
+  assert.equal(dashboard.matchesAccountSearch(file, 'person@'), true);
+  assert.equal(dashboard.matchesAccountSearch(file, 'secret-only-value'), false);
+  assert.equal(dashboard.matchesAccountSearch({ name: 'other.json', project_id: 'ProjectABC' }, 'projectabc'), true);
+});
+
+test('fav-first sorts each favorite group with the prefix-asc comparator', () => {
+  const dashboard = loadDashboard();
+  dashboard.setFavorites(['fav-z', 'fav-a', 'fav-none']);
+  dashboard.setSort('fav-first');
+  const files = [
+    { name: 'rest-z', prefix: 'Z' }, { name: 'fav-z', prefix: 'Z' },
+    { name: 'rest-a', prefix: 'A' }, { name: 'fav-none', prefix: '' },
+    { name: 'fav-a', prefix: 'A' }, { name: 'rest-none', prefix: '' },
+  ];
+  assert.deepEqual(Array.from(dashboard.sortFiles(files), f => f.name),
+    ['fav-a', 'fav-z', 'fav-none', 'rest-a', 'rest-z', 'rest-none']);
+  assert.equal(files[0].name, 'rest-z');
+});
+
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false, lowQuotaThreshold: 20 });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -224,7 +266,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -322,7 +364,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20 });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
