@@ -38,6 +38,7 @@
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --radius-card: 14px;
+  --gap-x: 8px;
 }
 
 * {
@@ -53,7 +54,7 @@ body {
   line-height: 1.5;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  padding: 16px 20px;
+  padding: 16px calc(2 * var(--gap-x));
 }
 
 .page {
@@ -74,14 +75,16 @@ body {
 
 .page-header .main-nav { justify-self: center; }
 .page-header .title-wrap { min-width: 0; }
-.page-header .title-row { flex-wrap: wrap; }
+.page-header .title-row { flex-wrap: nowrap; }
+.page-header .title-row h1 { flex-shrink: 0; white-space: nowrap; }
+.page-header .version-badge,
+.page-header .btn-check-update { flex-shrink: 0; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .page-header {
     grid-template-columns: 1fr;
     padding-top: 50px; /* Stack below the floating toolbar at narrow widths. */
   }
-  .page-header .title-row h1 { flex-basis: 100%; }
   .page-header .main-nav { grid-column: 1; }
 }
 
@@ -167,12 +170,17 @@ body {
 .meta-stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap-x);
+  flex-wrap: nowrap;
   font-size: 12px;
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-top: 2px;
 }
+
+.credential-counter { display: flex; align-items: center; gap: 4px; font-size: 11px; white-space: nowrap; }
+.meta-stats > button { flex-shrink: 0; }
+.meta-stats .btn-refresh-all { padding: 4px 8px; font-size: 11px; }
 
 .stat-dot {
   width: 3px;
@@ -201,6 +209,10 @@ body {
   transition: opacity 0.15s ease;
 }
 
+/* The view switch writes display:none; reserve the same header slot in Ego. */
+.title-wrap .btn-refresh-all { display: inline-flex !important; white-space: nowrap; }
+.title-wrap .btn-refresh-all[style*="display: none"] { visibility: hidden; }
+
 .btn-refresh-all:hover {
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -214,20 +226,25 @@ body {
 }
 .refresh-icon svg { width: 13px; height: 13px; }
 
+/* Equal vertical separation around the filter controls. */
+#quota-view-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
 /* Tabs & Filter Row */
 .tabs-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 12px;
+  gap: 12px var(--gap-x);
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .tabs-list {
   display: flex;
-  gap: 6px;
+  gap: 6px var(--gap-x);
   align-items: center;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .tab-item {
@@ -282,8 +299,12 @@ body {
 .sort-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px var(--gap-x);
+  min-width: 0;
 }
+
+.tabs-row > *, .sort-wrap > * { max-width: 100%; }
 
 .sort-select {
   background: var(--bg-primary);
@@ -338,22 +359,24 @@ body {
 .cards-grid.layout-list { display: block; min-width: 0; }
 .account-table-scroll { overflow-x: auto; }
 /* Two columns only while each table has room; otherwise one column (no overlap) */
-.list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 12px; }
+.list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 720px), 1fr)); gap: 12px calc(2 * var(--gap-x)); }
+.list-columns > * { min-width: 0; }
 /* Plan text is the first thing to shrink when a table gets narrow */
 .account-table-scroll { container-type: inline-size; }
 @container (max-width: 760px) {
   .list-plan-name { display: block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 }
 .account-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg-card); }
-.account-table th, .account-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+.account-table th, .account-table td { padding: 8px calc(2 * var(--gap-x)); text-align: left; border-bottom: 1px solid var(--border-color); }
 .account-table th { color: var(--text-secondary); text-align: center; }
 .account-table td { width: 1%; white-space: nowrap; }
-.account-table td.list-activity { width: auto; min-width: 120px; white-space: normal; }
+.account-table td.list-activity { width: auto; min-width: 120px; white-space: nowrap; }
+.list-activity .activity-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .account-table tbody tr:nth-child(even) { background: var(--bg-primary); }
 .account-table .prefix-row { margin-top: 3px; }
 .account-table .list-quota { min-width: 90px; }
 .account-table .track { margin-top: 4px; height: 4px; }
-.list-actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.list-actions { display: flex; align-items: center; gap: var(--gap-x); white-space: nowrap; }
 .list-credits { display: flex; gap: 4px; margin-top: 4px; white-space: nowrap; }
 /* Fixed slots so 1-2 digit counts and placeholders keep the same width */
 .list-credits > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
@@ -711,8 +734,8 @@ body {
 
 .plan-row {
   display: flex;
-  align-items: center;
-  gap: 5px;
+  align-items: baseline;
+  gap: var(--gap-x);
   font-size: 11.5px;
   color: var(--text-secondary);
 }
@@ -722,11 +745,13 @@ body {
   color: var(--text-primary);
 }
 
+.plan-label { flex-shrink: 0; white-space: nowrap; }
 .plan-badges {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 6px var(--gap-x);
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .reset-credits-badge {
@@ -984,7 +1009,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
-  padding: 14px 16px;
+  padding: 14px calc(2 * var(--gap-x));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1002,7 +1027,8 @@ body {
 .throughput-title-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 8px var(--gap-x);
 }
 
 .throughput-title {
@@ -1142,14 +1168,15 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px var(--gap-x);
   font-size: 11.5px;
 }
 
 .meter-label {
   color: var(--text-secondary);
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -1157,8 +1184,9 @@ body {
   font-family: var(--font-mono);
   font-size: 11px;
   display: flex;
-  gap: 5px;
-  flex-shrink: 0;
+  gap: 3px var(--gap-x);
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .meta-percent {
@@ -1168,6 +1196,10 @@ body {
 
 .meta-reset {
   color: var(--text-quaternary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta-reset-soon {
@@ -1847,16 +1879,21 @@ body {
         <div class="title-row">
           <h1 id="page-main-heading">Quota Management</h1>
           <span class="version-badge">v__PLUGIN_VERSION__</span>
-          <button id="btn-check-update" class="btn-check-update" title="Check for updates on GitHub" aria-label="Check for updates">
-            <span id="update-icon" class="update-icon">↻</span>
-            <span id="update-text" class="update-text">Check update</span>
-          </button>
         </div>
         <div class="meta-stats">
+          <span class="credential-counter">
           <span class="stat-dot"></span>
           <span><strong id="stat-total" style="color:var(--text-primary);">0</strong> credentials</span>
           <span>&middot;</span>
           <span class="meta-loaded"><strong id="stat-loaded">0</strong> loaded</span>
+          </span>
+          <button id="btn-refresh-all" class="btn-refresh-all" title="Refresh all quotas" aria-label="Refresh all quotas">
+            <span id="refresh-all-icon" class="refresh-icon"></span> Refresh all
+          </button>
+          <button id="btn-check-update" class="btn-check-update" title="Check for updates on GitHub" aria-label="Check for updates">
+            <span id="update-icon" class="update-icon">↻</span>
+            <span id="update-text" class="update-text">Check update</span>
+          </button>
         </div>
       </div>
       <nav class="main-nav" aria-label="Plugin views">
@@ -1919,9 +1956,6 @@ body {
 
     <!-- Filter Tabs & Sort Row -->
     <div class="tabs-row">
-      <button id="btn-refresh-all" class="btn-refresh-all" title="Refresh all quotas" aria-label="Refresh all quotas">
-        <span id="refresh-all-icon" class="refresh-icon"></span> Refresh all
-      </button>
       <nav class="tabs-list" role="tablist">
         <button class="tab-item active" data-provider="all">
           <span>All</span>
