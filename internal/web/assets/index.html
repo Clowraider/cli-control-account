@@ -316,6 +316,13 @@ body {
 /* Layout: list (account table) */
 .cards-grid.layout-list { display: block; min-width: 0; }
 .account-table-scroll { overflow-x: auto; }
+/* Two columns only while each table has room; otherwise one column (no overlap) */
+.list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 12px; }
+/* Plan text is the first thing to shrink when a table gets narrow */
+.account-table-scroll { container-type: inline-size; }
+@container (max-width: 760px) {
+  .list-plan-name { display: block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+}
 .account-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg-card); }
 .account-table th, .account-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
 .account-table th { color: var(--text-secondary); text-align: center; }
@@ -1952,6 +1959,7 @@ body {
           <option value="list">List</option>
           <option value="compact">Compact</option>
         </select>
+        <button id="btn-list-columns" type="button" class="btn-hide-emails btn-icon" aria-pressed="false" title="Show the list in two columns" aria-label="Two-column list" style="display: none;">◫</button>
       </div>
     </div>
 
@@ -2227,6 +2235,7 @@ body {
   let currentTab = 'all';
   let currentSort = 'prefix-asc';
   let currentLayout = 'grid';
+  let listTwoColumns = false;
   let hideEmails = false;
   const UI_PREFS_KEY = 'cca-ui-prefs';
   const UI_PREF_TABS = ['all', 'claude', 'antigravity', 'codex', 'xai', 'kimi'];
@@ -2282,7 +2291,7 @@ body {
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
-    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] };
+    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] };
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (!raw) return defaults;
@@ -2292,6 +2301,7 @@ body {
         tab: UI_PREF_TABS.includes(prefs.tab) ? prefs.tab : defaults.tab,
         sort: UI_PREF_SORTS.includes(prefs.sort) ? prefs.sort : defaults.sort,
         layout: UI_PREF_LAYOUTS.includes(prefs.layout) ? prefs.layout : defaults.layout,
+        listTwoColumns: prefs.listTwoColumns === true,
         hideEmails: prefs.hideEmails === true,
         favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
         lowQuotaThreshold: UI_PREF_THRESHOLDS.includes(prefs.lowQuotaThreshold) ? prefs.lowQuotaThreshold : defaults.lowQuotaThreshold,
@@ -2458,6 +2468,12 @@ body {
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   const sortSelect = document.getElementById('sort-select');
   const layoutSelect = document.getElementById('layout-select');
+  const btnListColumns = document.getElementById('btn-list-columns');
+  btnListColumns.addEventListener('click', () => {
+    listTwoColumns = !listTwoColumns;
+    saveUiPrefs({ listTwoColumns });
+    render();
+  });
   const btnLowQuota = document.getElementById('btn-low-quota');
   btnLowQuota.addEventListener('click', () => {
     lowQuotaOnly = !lowQuotaOnly;
@@ -2530,6 +2546,7 @@ body {
     hideEmails = prefs.hideEmails;
     if (sortSelect) sortSelect.value = currentSort;
     currentLayout = prefs.layout;
+    listTwoColumns = prefs.listTwoColumns;
     if (layoutSelect) {
       layoutSelect.value = currentLayout;
       layoutSelect.addEventListener('change', () => {
@@ -5114,6 +5131,9 @@ body {
   function render() {
     grid.classList.toggle('layout-compact', currentLayout === 'compact');
     grid.classList.toggle('layout-list', currentLayout === 'list');
+    btnListColumns.style.display = currentLayout === 'list' ? '' : 'none';
+    btnListColumns.setAttribute('aria-pressed', String(listTwoColumns));
+    btnListColumns.classList.toggle('active', listTwoColumns);
     const filtered = authFiles.filter(f => {
       if (f.disabled) return false;
       if (currentTab !== 'all' && resolveProvider(f) !== currentTab) return false;
@@ -5129,12 +5149,21 @@ body {
       return;
     }
 
-    grid.innerHTML = currentLayout === 'list'
-      ? `<div class="account-table-scroll"><table class="account-table" aria-label="Accounts"><thead><tr>
+    function renderListTable(rows) {
+      return `<div class="account-table-scroll"><table class="account-table" aria-label="Accounts"><thead><tr>
           <th scope="col">Account</th><th scope="col">Activity</th><th scope="col">5h</th>
           <th scope="col">Weekly</th><th scope="col">Plan</th><th scope="col">Actions</th>
-        </tr></thead><tbody>${sorted.map(renderListRow).join('')}</tbody></table></div>`
-      : sorted.map(file => renderCard(file)).join('');
+        </tr></thead><tbody>${rows.map(renderListRow).join('')}</tbody></table></div>`;
+    }
+
+    if (currentLayout === 'list') {
+      const midpoint = Math.ceil(sorted.length / 2);
+      grid.innerHTML = listTwoColumns
+        ? `<div class="list-columns">${renderListTable(sorted.slice(0, midpoint))}${renderListTable(sorted.slice(midpoint))}</div>`
+        : renderListTable(sorted);
+    } else {
+      grid.innerHTML = sorted.map(file => renderCard(file)).join('');
+    }
 
     sorted.forEach(file => {
       const btn = document.getElementById(`btn-ref-${file.name}`);
@@ -5235,7 +5264,7 @@ body {
         <div class="prefix-row"><span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(file.prefix || '—')}</span></div></td>
       <td class="list-activity">${renderCardMiniActivity(file)}</td>
       ${renderListQuota(quota, 'fiveHour')}${renderListQuota(quota, 'weekly')}
-      <td>${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}
+      <td><span class="list-plan-name" title="${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}">${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}</span>
         <div class="list-credits">${resetCreditsBadge || resetCreditsPlaceholder}${creditsBadge || creditsPlaceholder}</div></td>
       <td><div class="list-actions">
         <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="${quota.loading ? 'spinning' : ''}">🔄</span></button>

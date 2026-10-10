@@ -118,6 +118,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
         disabled: false,
         dataset: {},
         attributes: {},
+        style: {},
         setAttribute(name, value) {
           this.attributes[name] = String(value);
         },
@@ -308,16 +309,31 @@ test('layout preference defaults, validates, and persists', () => {
   }
 });
 
+test('list two-column preference accepts only true and round-trips', () => {
+  assert.equal(loadDashboard().loadUiPrefs().listTwoColumns, false);
+  for (const value of [true, false, 'true', 1, null]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ listTwoColumns: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().listTwoColumns, value === true);
+    for (const enabled of [true, false]) {
+      dashboard.saveUiPrefs({ listTwoColumns: enabled });
+      assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).listTwoColumns, enabled);
+      assert.equal(dashboard.loadUiPrefs().listTwoColumns, enabled);
+    }
+  }
+});
+
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -329,7 +345,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -427,7 +443,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
