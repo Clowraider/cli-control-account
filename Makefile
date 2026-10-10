@@ -2,7 +2,7 @@
 
 BINARY_NAME=control-account-linux-amd64.so
 HEADER_NAME=control-account-linux-amd64.h
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "0.6.3")
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "0.6.4")
 LDFLAGS ?= -s -w -X control-account/internal/version.Version=$(VERSION)
 
 all: test build
