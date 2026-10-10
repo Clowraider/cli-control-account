@@ -6,6 +6,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('credit badges share real balances and missing placeholders', () => {
+  const { renderCreditBadges } = loadDashboard();
+  const missing = renderCreditBadges('a', 'codex', {});
+  assert.match(missing.resetCreditsPlaceholder, /No reset credits/);
+  assert.match(missing.creditsPlaceholder, /No credits/);
+  const real = renderCreditBadges('a"', 'codex', { resetCredits: { availableCount: 2 }, credits: { balance: '0' } });
+  assert.match(real.resetCreditsBadge, /btn-consume-credit/);
+  assert.match(real.resetCreditsBadge, /a&quot;/);
+  assert.match(real.creditsBadge, /🪙 0/);
+  assert.equal(real.resetCreditsPlaceholder + real.creditsPlaceholder, '');
+  assert.equal(renderCreditBadges('a', 'codex', { resetCredits: { availableCount: 0 } }).resetCreditsBadge, '');
+  assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -30,6 +44,10 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     setSort: (value) => { currentSort = value; },
     fetchClaudeQuota,
     lowestWeeklyPercent,
+    lowestPercentOfKind,
+    quotaKindDetail,
+    renderListRow,
+    renderCreditBadges,
     isLowQuotaAccount,
     fetchCodexQuota,
     loadUiPrefs,
@@ -53,6 +71,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     formatResetInfo,
     formatDuration,
     renderCard,
+    renderActivityBar,
+    renderCardMiniActivity,
     buildCodexQuotaRows,
     parseKimiQuotaUrl,
     resolveKimiQuotaUrl,
@@ -197,6 +217,36 @@ test('weekly minimum spans groups and ignores non-weekly or non-finite data', ()
   }
 });
 
+test('list window minima and hover details span groups and ignore unrelated data', () => {
+  const dashboard = loadDashboard();
+  const quota = { groups: [
+    { title: 'Gemini Models', rows: [{ fiveHour: true, percent: 97 }, { weekly: true, percent: 80 }, { percent: 0 }] },
+    { name: 'Claude and GPT Models', rows: [{ fiveHour: true, percent: 43 }, { weekly: true, percent: 25 }, { fiveHour: true, percent: null }] },
+  ] };
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 43);
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 25);
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97% · Claude and GPT Models: 43%');
+  for (const empty of [null, {}, { groups: [{ rows: [{ percent: 0 }, { fiveHour: true, percent: null }, { fiveHour: true, percent: Infinity }] }] }]) {
+    assert.equal(dashboard.lowestPercentOfKind(empty, 'fiveHour'), null);
+    assert.equal(dashboard.lowestPercentOfKind(empty, 'weekly'), null);
+    assert.equal(dashboard.quotaKindDetail(empty, 'fiveHour'), '');
+  }
+});
+
+test('list rows reuse actions and mask and escape account text', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'person@example.com.json', email: 'person@example.com', provider: 'codex', prefix: '<work>' };
+  const raw = dashboard.renderListRow(file);
+  assert.match(raw, /person@example.com/);
+  assert.match(raw, /&lt;work&gt;/);
+  assert.match(raw, /btn-favorite/);
+  assert.match(raw, /btn-ref-person@example.com.json/);
+  assert.doesNotMatch(raw, /btn-edit-prefix|btn-consume-credit|toggle-status-/);
+  dashboard.setHideEmails(true);
+  const masked = dashboard.renderListRow(file);
+  assert.match(masked, /title="pe\*{7}">pe\*{7}/);
+});
+
 test('low quota accounts use a strict weekly threshold', () => {
   const dashboard = loadDashboard();
   const quota = percent => ({ groups: [{ rows: [{ weekly: true, percent }] }] });
@@ -245,16 +295,29 @@ test('fav-first sorts each favorite group with the prefix-asc comparator', () =>
   assert.equal(files[0].name, 'rest-z');
 });
 
+test('layout preference defaults, validates, and persists', () => {
+  assert.equal(loadDashboard().loadUiPrefs().layout, 'grid');
+  for (const value of ['grid', 'list', 'compact', 'table', '', null, 1]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ layout: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().layout, ['grid', 'list', 'compact'].includes(value) ? value : 'grid');
+    dashboard.saveUiPrefs({ layout: 'compact' });
+    assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).layout, 'compact');
+    assert.equal(dashboard.loadUiPrefs().layout, 'compact');
+  }
+});
+
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -266,7 +329,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -364,7 +427,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
@@ -531,7 +594,7 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
   // Render card should contain badge
   const cardHtml = dashboard.renderCard(file);
   assert.ok(cardHtml.includes('reset-credits-badge'), 'card should render reset-credits-badge');
-  assert.ok(cardHtml.includes('⚡ 2 reset credits'), 'card should display credit count');
+  assert.ok(cardHtml.includes('⚡ 2<span class="credit-words"> reset credits</span>'), 'card should display credit count with compact-hideable words');
   assert.ok(cardHtml.includes('codex-credits-badge'), 'card should render codex-credits-badge');
   assert.ok(cardHtml.includes('25.5'), 'card should render balance');
   assert.ok(cardHtml.includes('codex-expiry-badge'), 'card should render codex-expiry-badge');
@@ -666,6 +729,7 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
   assert.equal(weeklyRow.warning, false);
 
   const fiveHourRow = rows.find(r => r.label === 'Five Hour Limit');
+  assert.equal(fiveHourRow.fiveHour, true);
   assert.equal(fiveHourRow.percent, 90);
   assert.equal(fiveHourRow.percentLabel, '90% remaining');
   assert.equal(fiveHourRow.warning, false);
@@ -1151,4 +1215,13 @@ test('xAI parity: fetchXaiQuota enriches plan with subscription info from user a
   assert.ok(stored);
   assert.equal(stored.plan, 'SuperGrok Heavy');
   assert.deepEqual({ ...stored.subscriptionPlan }, { label: 'SuperGrok Heavy', tier: 'elite' });
+});
+
+test('activity bar is reused in the full mini activity and escapes tooltips', () => {
+  const dashboard = loadDashboard();
+  const file = { recent_requests: [{ success: 2, failed: 1, time: '<unsafe>' }] };
+  const bar = dashboard.renderActivityBar(file);
+  assert.ok(bar.includes('activity-col'));
+  assert.ok(dashboard.renderCardMiniActivity(file).includes(bar));
+  assert.ok(!bar.includes('<unsafe>'));
 });
