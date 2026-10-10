@@ -6,6 +6,79 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('view refresh controls share one header slot and only the active control is visible', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const slot = html.match(/<div class="header-refresh-slot">([\s\S]*?)<\/div>/);
+  assert.ok(slot, 'refresh controls belong to a shared header slot');
+  for (const id of ['btn-refresh-all', 'ego-btn-refresh']) {
+    assert.equal(html.split(`id="${id}"`).length - 1, 1);
+    assert.ok(slot[1].includes(`id="${id}"`));
+  }
+  assert.match(slot[1], /id="ego-btn-refresh"[^>]*aria-label="Refresh Ego analytics"/);
+  const dashboard = loadDashboard();
+  dashboard.switchView('ego');
+  assert.equal(dashboard.getElement('btn-refresh-all').style.visibility, 'hidden');
+  assert.equal(dashboard.getElement('ego-btn-refresh').style.visibility, 'visible');
+  dashboard.switchView('quota');
+  assert.equal(dashboard.getElement('btn-refresh-all').style.visibility, 'visible');
+  assert.equal(dashboard.getElement('ego-btn-refresh').style.visibility, 'hidden');
+});
+
+test('returning from Ego restores Quota stylesheet display across repeated switches', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const quotaRule = html.match(/#quota-view-section\s*\{([^}]+)\}/);
+  assert.ok(quotaRule);
+  assert.match(quotaRule[1], /display:\s*flex\s*;/);
+  assert.match(quotaRule[1], /flex-direction:\s*column\s*;/);
+  assert.match(quotaRule[1], /gap:\s*16px\s*;/);
+  const quotaRoot = html.match(/<section\s+id="quota-view-section"[^>]*>/);
+  assert.ok(quotaRoot);
+  assert.doesNotMatch(quotaRoot[0], /style=/, 'initial Quota layout comes from the stylesheet');
+
+  const dashboard = loadDashboard(undefined, undefined, { initialStorage: {
+    'cca-ui-prefs': JSON.stringify({ egoRange: '7d', egoIdentity: 'prefix', quotaDisplay: 'used', hideEmails: true }),
+  } });
+  const quota = dashboard.getElement('quota-view-section');
+  const ego = dashboard.getElement('ego-view-section');
+  // The VM style stub has no CSSStyleDeclaration defaults; mirror the initial absent inline display.
+  quota.style.display = '';
+  const initialDisplay = quota.style.display;
+  const initialStorage = [...dashboard.storageData.entries()];
+  for (let cycle = 0; cycle < 3; cycle++) {
+    dashboard.switchView('ego');
+    assert.equal(quota.style.display, 'none');
+    assert.equal(ego.style.display, 'flex');
+    assert.equal(dashboard.getElement('btn-refresh-all').style.visibility, 'hidden');
+    assert.equal(dashboard.getElement('ego-btn-refresh').style.visibility, 'visible');
+    dashboard.switchView('quota');
+    assert.equal(quota.style.display, initialDisplay, 'return must restore stylesheet display, not inline block');
+    assert.equal(ego.style.display, 'none');
+    assert.equal(dashboard.getElement('btn-refresh-all').style.visibility, 'visible');
+    assert.equal(dashboard.getElement('ego-btn-refresh').style.visibility, 'hidden');
+    assert.equal(dashboard.getElement('quota-view-section'), quota, 'reuse the same document root');
+    assert.deepEqual([...dashboard.storageData.entries()], initialStorage, 'switches must not reset preferences');
+  }
+  // No reload API exists in this VM: an attempted navigation/reload also fails this test.
+});
+
+test('moved Ego refresh retains selected-range overview requests and settings refresh', async () => {
+  const requests = [];
+  const dashboard = loadDashboard(async url => {
+    requests.push(String(url));
+    return { ok: false, status: 401, json: async () => ({ error: 'invalid management key' }) };
+  });
+  dashboard.initEgoListeners();
+  dashboard.setEgoRange('7d');
+  dashboard.getElement('ego-btn-refresh').click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, 6);
+  for (const endpoint of ['stats', 'providers', 'models', 'accounts', 'timeline']) {
+    assert.ok(requests.some(url => url.includes(`/${endpoint}?range=7d`)), endpoint);
+  }
+  assert.ok(requests.some(url => url.endsWith('/settings')));
+  assert.ok(requests.every(url => !url.includes('quota-refresh')));
+});
+
 test('credit badges share real balances and missing placeholders', () => {
   const { renderCreditBadges } = loadDashboard();
   const missing = renderCreditBadges('a', 'codex', {});
@@ -18,6 +91,47 @@ test('credit badges share real balances and missing placeholders', () => {
   assert.equal(real.resetCreditsPlaceholder + real.creditsPlaceholder, '');
   assert.equal(renderCreditBadges('a', 'codex', { resetCredits: { availableCount: 0 } }).resetCreditsBadge, '');
   assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
+});
+
+test('maintenance starts hidden and uses the native accessible chevron pattern', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /id="ego-maintenance-body" hidden/);
+  assert.match(html, /type="button" id="btn-ego-maintenance-toggle" class="throughput-toggle" aria-expanded="false" aria-controls="ego-maintenance-body" title="Expand maintenance" aria-label="Expand maintenance"/);
+  assert.match(html, /setEgoMaintenanceCollapsed\(prefs.egoMaintenanceCollapsed\)/);
+  assert.match(html, /addEventListener\('click', \(\) => setEgoMaintenanceCollapsed\(!egoMaintenanceCollapsed\)\)/);
+});
+
+test('maintenance preference validates booleans and toggles without backend or maintenance effects', () => {
+  assert.equal(loadDashboard().loadUiPrefs().egoMaintenanceCollapsed, true);
+  for (const value of [null, 0, 1, 'false', 'true', {}, []]) {
+    assert.equal(loadDashboard(undefined, undefined, { initialStorage: {
+      'cca-ui-prefs': JSON.stringify({ egoMaintenanceCollapsed: value }),
+    } }).loadUiPrefs().egoMaintenanceCollapsed, true);
+  }
+  for (const value of [false, true]) {
+    let requests = 0;
+    const dashboard = loadDashboard(() => { requests++; throw new Error('unexpected backend request'); }, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ egoMaintenanceCollapsed: value, throughputCollapsed: true, hideEmails: true, egoRange: '7d' }) },
+    });
+    dashboard.initEgoListeners();
+    assert.equal(dashboard.loadUiPrefs().egoMaintenanceCollapsed, value);
+    const controls = ['ego-toggle-active', 'ego-btn-prune', 'ego-btn-reset'].map(id => dashboard.getElement(id));
+    const before = controls.map(control => JSON.stringify(control.attributes));
+    for (const collapsed of [value, !value, value]) {
+      dashboard.setEgoMaintenanceCollapsed(collapsed);
+      const button = dashboard.getElement('btn-ego-maintenance-toggle');
+      assert.equal(button.attributes['aria-expanded'], String(!collapsed));
+      assert.equal(button.title, collapsed ? 'Expand maintenance' : 'Collapse maintenance');
+      assert.equal(button.attributes['aria-label'], button.title);
+      assert.equal(dashboard.getElement('ego-maintenance-body').hidden, collapsed);
+      assert.equal(dashboard.loadUiPrefs().egoMaintenanceCollapsed, collapsed);
+      assert.equal(dashboard.loadUiPrefs().throughputCollapsed, true);
+      assert.equal(dashboard.loadUiPrefs().hideEmails, true);
+      assert.equal(dashboard.loadUiPrefs().egoRange, '7d');
+    }
+    assert.deepEqual(controls.map(control => JSON.stringify(control.attributes)), before);
+    assert.equal(requests, 0);
+  }
 });
 
 test('throughput collapse preference defaults, validates, and persists', () => {
@@ -113,6 +227,65 @@ test('quota refresh controls reuse an accessible currentColor SVG in every layou
   assert.match(dashboard.getElement('refresh-all-icon').innerHTML, /<svg[^>]*stroke="currentColor"/);
 });
 
+test('Ego preferences default, validate, and persist independently', () => {
+  const defaults = loadDashboard().loadUiPrefs();
+  assert.equal(defaults.egoRange, '24h');
+  assert.equal(defaults.egoIdentity, 'email');
+  for (const invalid of [null, true, 'bad']) {
+    const prefs = loadDashboard(undefined, undefined, { initialStorage: {
+      'cca-ui-prefs': JSON.stringify({ egoRange: invalid, egoIdentity: invalid }),
+    } }).loadUiPrefs();
+    assert.equal(prefs.egoRange, '24h');
+    assert.equal(prefs.egoIdentity, 'email');
+  }
+  for (const range of ['1h', '24h', '7d', '30d', 'all']) {
+    const dashboard = loadDashboard(undefined, undefined, { initialStorage: {
+      'cca-ui-prefs': JSON.stringify({ egoRange: range, egoIdentity: 'prefix' }),
+    } });
+    assert.equal(dashboard.loadUiPrefs().egoRange, range);
+    assert.equal(dashboard.loadUiPrefs().egoIdentity, 'prefix');
+    dashboard.setEgoRange(range);
+    dashboard.setEgoIdentity('prefix');
+    assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).egoRange, range);
+    assert.equal(dashboard.getElement('ego-btn-identity').textContent, 'Show Email');
+    assert.equal(dashboard.getElement('ego-btn-identity').attributes['aria-pressed'], 'true');
+    assert.equal(dashboard.getElement('ego-btn-identity').title, 'Show Email');
+    assert.equal(dashboard.getElement('ego-btn-identity').attributes['aria-label'], 'Show Email');
+    assert.equal(dashboard.getHideEmails(), false);
+    dashboard.setEgoIdentity('email');
+    assert.equal(dashboard.loadUiPrefs().egoIdentity, 'email');
+    assert.equal(dashboard.getElement('ego-btn-identity').textContent, 'Show Prefix');
+    assert.equal(dashboard.getElement('ego-btn-identity').title, 'Show Prefix');
+    assert.equal(dashboard.getElement('ego-btn-identity').attributes['aria-label'], 'Show Prefix');
+    assert.equal(dashboard.getElement('ego-btn-identity').attributes['aria-pressed'], 'false');
+  }
+});
+
+test('Ego identity toggle reuses cached rows and preserves escaped raw tooltips without fetching', () => {
+  let fetches = 0;
+  const dashboard = loadDashboard(async () => { fetches++; return { ok: false }; });
+  dashboard.renderEgoAccountsTable([{ account: 'raw<account>', provider: 'codex', total_requests: 1,
+    prompt_tokens: 2, completion_tokens: 3, total_tokens: 5, avg_latency_ms: 10 }]);
+  const before = dashboard.getElement('ego-tbody-accounts').innerHTML;
+  assert.match(before, /title="raw&lt;account&gt;"/);
+  dashboard.setEgoIdentity('prefix');
+  assert.equal(dashboard.getElement('ego-tbody-accounts').innerHTML, before);
+  assert.equal(fetches, 0);
+});
+
+test('Ego labels resolve auth identifiers without reading secret account fields', () => {
+  const { egoAccountLabel } = loadDashboard();
+  const files = [{ id: 'auth-id', name: 'file.json', auth_index: 7, email: 'user@example.test', prefix: 'work', account: 'secret' }];
+  for (const id of ['auth-id', 'file.json', '7']) {
+    assert.equal(egoAccountLabel(id, files, 'prefix'), 'work');
+    assert.equal(egoAccountLabel(id, files, 'email'), 'user@example.test');
+  }
+  assert.equal(egoAccountLabel('missing', files, 'prefix'), 'missing');
+  assert.equal(egoAccountLabel('auth-id', [], 'email'), 'auth-id');
+  assert.equal(egoAccountLabel('file.json', [{ name: 'file.json' }], 'prefix'), 'file.json');
+  assert.equal(egoAccountLabel('file.json', [{ name: 'file.json' }], 'email'), 'file');
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -131,6 +304,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     init();
   }`;
   const exposure = `globalThis.__dashboardTest = {
+    switchView,
+    initEgoListeners,
     matchesAccountSearch,
     sortFiles,
     setFavorites: (value) => { favorites = value; },
@@ -143,11 +318,16 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     renderListQuota,
     setQuotaDisplay: (value) => setQuotaDisplay(value),
     setThroughputCollapsed: (value) => setThroughputCollapsed(value),
+    setEgoMaintenanceCollapsed: (value) => setEgoMaintenanceCollapsed(value),
     renderCreditBadges,
     isLowQuotaAccount,
     fetchCodexQuota,
     loadUiPrefs,
     saveUiPrefs,
+    egoAccountLabel,
+    setEgoIdentity,
+    setEgoRange,
+    renderEgoAccountsTable,
     isLowQuota: (row) => isLowQuota(row),
     setLowQuotaThreshold: (value) => { lowQuotaThreshold = value; },
     maskIdentity,
@@ -267,7 +447,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     clearTimeout: wrappedClearTimeout,
     atob: str => Buffer.from(str, 'base64').toString('utf8'),
     window: {
-      location: { host: 'test.local' },
+      location: { host: 'test.local', pathname: '/quota', hash: '' },
       parent: { localStorage: storage },
       setTimeout: wrappedSetTimeout,
       clearTimeout: wrappedClearTimeout,
@@ -449,14 +629,14 @@ test('list two-column preference accepts only true and round-trips', () => {
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, egoMaintenanceCollapsed: true, hideEmails: false, quotaDisplay: 'remaining', egoRange: '24h', egoIdentity: 'email', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, egoMaintenanceCollapsed: true, hideEmails: false, quotaDisplay: 'remaining', egoRange: '24h', egoIdentity: 'email', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -468,7 +648,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, egoMaintenanceCollapsed: true, hideEmails: false, quotaDisplay: 'remaining', egoRange: '24h', egoIdentity: 'email', lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -566,7 +746,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, egoMaintenanceCollapsed: true, hideEmails: false, quotaDisplay: 'remaining', egoRange: '24h', egoIdentity: 'email', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {

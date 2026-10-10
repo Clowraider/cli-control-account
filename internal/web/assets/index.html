@@ -74,6 +74,10 @@ body {
 }
 
 .page-header .main-nav { justify-self: center; }
+@media (min-width: 901px) {
+  /* Match the floating toolbar's 52px exterior and 24px page-top position. */
+  .page-header .main-nav { height: 52px; margin-top: 8px; }
+}
 .page-header .title-wrap { min-width: 0; }
 .page-header .title-row { flex-wrap: nowrap; }
 .page-header .title-row h1 { flex-shrink: 0; white-space: nowrap; }
@@ -209,9 +213,9 @@ body {
   transition: opacity 0.15s ease;
 }
 
-/* The view switch writes display:none; reserve the same header slot in Ego. */
-.title-wrap .btn-refresh-all { display: inline-flex !important; white-space: nowrap; }
-.title-wrap .btn-refresh-all[style*="display: none"] { visibility: hidden; }
+/* Both controls occupy one stable slot; only the active control is interactive. */
+.header-refresh-slot { display: grid; }
+.header-refresh-slot .btn-refresh-all { grid-area: 1 / 1; justify-self: start; white-space: nowrap; }
 
 .btn-refresh-all:hover {
   background: var(--bg-surface);
@@ -1902,9 +1906,14 @@ body {
           <span>&middot;</span>
           <span class="meta-loaded"><strong id="stat-loaded">0</strong> loaded</span>
           </span>
-          <button id="btn-refresh-all" class="btn-refresh-all" title="Refresh all quotas" aria-label="Refresh all quotas">
-            <span id="refresh-all-icon" class="refresh-icon"></span> Refresh all
-          </button>
+          <div class="header-refresh-slot">
+            <button id="btn-refresh-all" class="btn-refresh-all" title="Refresh all quotas" aria-label="Refresh all quotas">
+              <span id="refresh-all-icon" class="refresh-icon"></span> Refresh all
+            </button>
+            <button id="ego-btn-refresh" class="btn-refresh-all" title="Refresh Ego analytics" aria-label="Refresh Ego analytics" style="visibility: hidden;">
+              <span id="ego-refresh-icon" class="refresh-icon"></span> Refresh
+            </button>
+          </div>
           <button id="btn-check-update" class="btn-check-update" title="Check for updates on GitHub" aria-label="Check for updates">
             <span id="update-icon" class="update-icon">↻</span>
             <span id="update-text" class="update-text">Check update</span>
@@ -2060,9 +2069,7 @@ body {
               <button class="ego-btn-range" data-range="30d">30d</button>
               <button class="ego-btn-range" data-range="all">All</button>
             </div>
-            <button id="ego-btn-refresh" class="btn-check-update" style="display:inline-flex; align-items:center; gap:6px;">
-              <span>↻</span> Refresh
-            </button>
+            <button id="ego-btn-identity" type="button" class="ego-btn-range" aria-pressed="false" aria-label="Show Prefix" title="Show Prefix">Show Prefix</button>
           </div>
         </div>
 
@@ -2229,8 +2236,10 @@ body {
       <div class="ego-settings-card">
         <div class="ego-section-title">
           <span>⚙️</span> Ego Engine Maintenance &amp; Settings
+          <button type="button" id="btn-ego-maintenance-toggle" class="throughput-toggle" aria-expanded="false" aria-controls="ego-maintenance-body" title="Expand maintenance" aria-label="Expand maintenance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
         </div>
 
+        <div id="ego-maintenance-body" hidden>
         <div class="ego-settings-row">
           <div class="ego-settings-info">
             <h4>Ingestion Active</h4>
@@ -2263,6 +2272,7 @@ body {
             <p>Vacía completamente la tabla de métricas y ejecuta un VACUUM para recuperar espacio en disco.</p>
           </div>
           <button id="ego-btn-reset" class="ego-btn-danger">Reiniciar base de datos</button>
+        </div>
         </div>
       </div>
     </section>
@@ -2308,6 +2318,7 @@ body {
   let currentLayout = 'grid';
   let listTwoColumns = false;
   let throughputCollapsed = false;
+  let egoMaintenanceCollapsed = true;
   let hideEmails = false;
   let quotaDisplay = 'remaining';
 
@@ -2380,7 +2391,7 @@ body {
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
-    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] };
+    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, egoMaintenanceCollapsed: true, hideEmails: false, quotaDisplay: 'remaining', egoRange: '24h', egoIdentity: 'email', lowQuotaThreshold: 20, favorites: [] };
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (!raw) return defaults;
@@ -2392,14 +2403,27 @@ body {
         layout: UI_PREF_LAYOUTS.includes(prefs.layout) ? prefs.layout : defaults.layout,
         listTwoColumns: prefs.listTwoColumns === true,
         throughputCollapsed: prefs.throughputCollapsed === true,
+        egoMaintenanceCollapsed: typeof prefs.egoMaintenanceCollapsed === 'boolean' ? prefs.egoMaintenanceCollapsed : defaults.egoMaintenanceCollapsed,
         hideEmails: prefs.hideEmails === true,
         quotaDisplay: prefs.quotaDisplay === 'used' ? 'used' : defaults.quotaDisplay,
+        egoRange: ['1h', '24h', '7d', '30d', 'all'].includes(prefs.egoRange) ? prefs.egoRange : defaults.egoRange,
+        egoIdentity: prefs.egoIdentity === 'prefix' ? 'prefix' : defaults.egoIdentity,
         favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
         lowQuotaThreshold: UI_PREF_THRESHOLDS.includes(prefs.lowQuotaThreshold) ? prefs.lowQuotaThreshold : defaults.lowQuotaThreshold,
       };
     } catch (e) {
       return defaults;
     }
+  }
+
+  function setEgoMaintenanceCollapsed(value) {
+    egoMaintenanceCollapsed = value !== false;
+    const button = document.getElementById('btn-ego-maintenance-toggle');
+    button.setAttribute('aria-expanded', String(!egoMaintenanceCollapsed));
+    button.title = egoMaintenanceCollapsed ? 'Expand maintenance' : 'Collapse maintenance';
+    button.setAttribute('aria-label', button.title);
+    document.getElementById('ego-maintenance-body').hidden = egoMaintenanceCollapsed;
+    saveUiPrefs({ egoMaintenanceCollapsed });
   }
 
   function setThroughputCollapsed(value) {
@@ -2570,6 +2594,7 @@ body {
   const REFRESH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/></svg>';
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   document.getElementById('refresh-all-icon').innerHTML = REFRESH_ICON;
+  document.getElementById('ego-refresh-icon').innerHTML = REFRESH_ICON;
   const sortSelect = document.getElementById('sort-select');
   const layoutSelect = document.getElementById('layout-select');
   const btnListColumns = document.getElementById('btn-list-columns');
@@ -2663,6 +2688,8 @@ body {
 
   function init() {
     const prefs = loadUiPrefs();
+    setEgoMaintenanceCollapsed(prefs.egoMaintenanceCollapsed);
+    document.getElementById('btn-ego-maintenance-toggle').addEventListener('click', () => setEgoMaintenanceCollapsed(!egoMaintenanceCollapsed));
     setThroughputCollapsed(prefs.throughputCollapsed);
     document.getElementById('btn-throughput-toggle').addEventListener('click', () => setThroughputCollapsed(!throughputCollapsed));
     favorites = prefs.favorites;
@@ -2992,6 +3019,7 @@ body {
       }
       const json = await res.json();
       authFiles = json.files || [];
+      renderEgoAccountsTable(lastEgoAccounts);
 
       // Try fetching api-key-usage in background without blocking
       apiFetch('/v0/management/api-key-usage')
@@ -5621,7 +5649,38 @@ body {
   // =========================================================================
   // --- EGO ANALYTICS CLIENT LOGIC ---
   // =========================================================================
-  let currentEgoRange = '24h';
+  let currentEgoRange = loadUiPrefs().egoRange;
+  let currentEgoIdentity = loadUiPrefs().egoIdentity;
+  let lastEgoAccounts = [];
+
+  function setEgoRange(range) {
+    currentEgoRange = ['1h', '24h', '7d', '30d', 'all'].includes(range) ? range : '24h';
+    document.querySelectorAll('#ego-time-ranges .ego-btn-range').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.range === currentEgoRange);
+    });
+    saveUiPrefs({ egoRange: currentEgoRange });
+  }
+
+  function setEgoIdentity(mode) {
+    currentEgoIdentity = mode === 'prefix' ? 'prefix' : 'email';
+    const button = document.getElementById('ego-btn-identity');
+    if (button) {
+      button.textContent = currentEgoIdentity === 'prefix' ? 'Show Email' : 'Show Prefix';
+      button.setAttribute('aria-pressed', String(currentEgoIdentity === 'prefix'));
+      button.title = button.textContent;
+      button.setAttribute('aria-label', button.textContent);
+    }
+    saveUiPrefs({ egoIdentity: currentEgoIdentity });
+    renderEgoAccountsTable(lastEgoAccounts);
+  }
+
+  function egoAccountLabel(account, files, mode) {
+    const raw = String(account ?? '');
+    const file = files.find(file => [file.id, file.name, file.auth_index, file.authIndex]
+      .some(id => id != null && String(id) === raw));
+    if (!file) return raw;
+    return mode === 'prefix' ? (String(file.prefix || '').trim() || raw) : (deriveIdentity(file).primary || raw);
+  }
   let currentActiveView = 'quota'; // 'quota' or 'ego'
 
   async function egoApiFetch(endpoint, options = {}) {
@@ -6173,6 +6232,7 @@ body {
   }
 
   function renderEgoAccountsTable(accounts) {
+    lastEgoAccounts = accounts || [];
     const tbody = document.getElementById('ego-tbody-accounts');
     if (!tbody) return;
 
@@ -6183,7 +6243,7 @@ body {
 
     tbody.innerHTML = accounts.map(a => `
       <tr>
-        <td class="ego-col-primary" title="${escapeHtml(a.account)}">${escapeHtml(a.account)}</td>
+        <td class="ego-col-primary" title="${escapeHtml(a.account)}">${escapeHtml(egoAccountLabel(a.account, authFiles, currentEgoIdentity))}</td>
         <td><span class="plan-badge">${escapeHtml(a.provider)}</span></td>
         <td class="ego-col-mono">${a.total_requests.toLocaleString()}</td>
         <td class="ego-col-mono">${formatCompactTokens(a.prompt_tokens)}</td>
@@ -6217,6 +6277,9 @@ body {
     const egoSection = document.getElementById('ego-view-section');
     const heading = document.getElementById('page-main-heading');
     const btnRefreshAll = document.getElementById('btn-refresh-all');
+    const btnRefreshEgo = document.getElementById('ego-btn-refresh');
+    if (btnRefreshAll) btnRefreshAll.style.visibility = view === 'ego' ? 'hidden' : 'visible';
+    if (btnRefreshEgo) btnRefreshEgo.style.visibility = view === 'ego' ? 'visible' : 'hidden';
 
     if (view === 'ego') {
       if (btnQuota) btnQuota.classList.remove('active');
@@ -6224,15 +6287,13 @@ body {
       if (quotaSection) quotaSection.style.display = 'none';
       if (egoSection) egoSection.style.display = 'flex';
       if (heading) heading.textContent = 'Ego Analytics';
-      if (btnRefreshAll) btnRefreshAll.style.display = 'none';
       loadEgoOverview();
     } else {
       if (btnQuota) btnQuota.classList.add('active');
       if (btnEgo) btnEgo.classList.remove('active');
-      if (quotaSection) quotaSection.style.display = 'block';
+      if (quotaSection) quotaSection.style.display = '';
       if (egoSection) egoSection.style.display = 'none';
       if (heading) heading.textContent = 'Quota Management';
-      if (btnRefreshAll) btnRefreshAll.style.display = 'inline-flex';
     }
   }
 
@@ -6242,13 +6303,18 @@ body {
     if (btnQuota) btnQuota.addEventListener('click', () => switchView('quota'));
     if (btnEgo) btnEgo.addEventListener('click', () => switchView('ego'));
 
+    setEgoRange(currentEgoRange);
+    setEgoIdentity(currentEgoIdentity);
+    const identityBtn = document.getElementById('ego-btn-identity');
+    if (identityBtn) identityBtn.addEventListener('click', () => {
+      setEgoIdentity(currentEgoIdentity === 'email' ? 'prefix' : 'email');
+    });
+
     // Range buttons
     const rangeBtns = document.querySelectorAll('#ego-time-ranges .ego-btn-range');
     rangeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        rangeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentEgoRange = btn.dataset.range || '24h';
+        setEgoRange(btn.dataset.range);
         loadEgoOverview();
       });
     });
