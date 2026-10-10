@@ -69,6 +69,25 @@ test('quota display changes presentation only across list and shared grid/compac
   assert.equal(dashboard.renderCard(file), remainingCard);
 });
 
+test('quota refresh controls reuse an accessible currentColor SVG in every layout', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'refresh.json', type: 'codex' };
+  for (const loading of [false, true]) {
+    dashboard.quotaStore[file.name] = { loading };
+    for (const markup of [dashboard.renderCard(file), dashboard.renderListRow(file)]) {
+      const buttons = markup.match(/<button[^>]*class="[^"]*btn-card-refresh[\s\S]*?<\/button>/g);
+      assert.ok(buttons?.length);
+      for (const button of buttons) {
+        assert.match(button, /aria-label="Refresh quota"/);
+        assert.match(button, /<svg[^>]*stroke="currentColor"/);
+        assert.doesNotMatch(button, /🔄/);
+        assert.equal(button.includes('refresh-icon spinning'), loading);
+      }
+    }
+  }
+  assert.match(dashboard.getElement('refresh-all-icon').innerHTML, /<svg[^>]*stroke="currentColor"/);
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');

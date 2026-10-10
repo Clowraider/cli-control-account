@@ -66,11 +66,23 @@ body {
 
 /* Page Header */
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto minmax(200px, 1fr);
+  align-items: start;
   gap: 12px;
+}
+
+.page-header .main-nav { justify-self: center; }
+.page-header .title-wrap { min-width: 0; }
+.page-header .title-row { flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .page-header {
+    grid-template-columns: 1fr;
+    padding-top: 50px; /* Stack below the floating toolbar at narrow widths. */
+  }
+  .page-header .title-row h1 { flex-basis: 100%; }
+  .page-header .main-nav { grid-column: 1; }
 }
 
 .title-wrap h1 {
@@ -178,9 +190,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #ffffff;
-  color: #0d1117;
-  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
   font-size: 12.5px;
   font-weight: 600;
   padding: 6px 14px;
@@ -190,8 +202,17 @@ body {
 }
 
 .btn-refresh-all:hover {
-  opacity: 0.9;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
 }
+
+.refresh-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.refresh-icon svg { width: 13px; height: 13px; }
 
 /* Tabs & Filter Row */
 .tabs-row {
@@ -1838,20 +1859,16 @@ body {
           <span class="meta-loaded"><strong id="stat-loaded">0</strong> loaded</span>
         </div>
       </div>
-      <div style="display:flex; gap:12px; align-items:center;">
-        <nav class="main-nav" aria-label="Plugin views">
-          <button id="nav-btn-quota" class="main-nav-btn active">
-            <span>Quota</span>
-          </button>
-          <button id="nav-btn-ego" class="main-nav-btn">
-            <span>Ego</span>
-            <span class="nav-badge">Analytics</span>
-          </button>
-        </nav>
-        <button id="btn-refresh-all" class="btn-refresh-all">
-          <span id="refresh-all-icon">🔄</span> Refresh all
+      <nav class="main-nav" aria-label="Plugin views">
+        <button id="nav-btn-quota" class="main-nav-btn active">
+          <span>Quota</span>
         </button>
-      </div>
+        <button id="nav-btn-ego" class="main-nav-btn">
+          <span>Ego</span>
+          <span class="nav-badge">Analytics</span>
+        </button>
+      </nav>
+      <!-- The final grid column reserves space for CPAMC's floating toolbar. -->
     </header>
 
     <section id="quota-view-section">
@@ -1902,6 +1919,9 @@ body {
 
     <!-- Filter Tabs & Sort Row -->
     <div class="tabs-row">
+      <button id="btn-refresh-all" class="btn-refresh-all" title="Refresh all quotas" aria-label="Refresh all quotas">
+        <span id="refresh-all-icon" class="refresh-icon"></span> Refresh all
+      </button>
       <nav class="tabs-list" role="tablist">
         <button class="tab-item active" data-provider="all">
           <span>All</span>
@@ -2484,7 +2504,9 @@ body {
   }
 
   const grid = document.getElementById('cards-grid');
+  const REFRESH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6.1A8 8 0 0 1 20 12M4 12a8 8 0 0 0 13.9 5.9"/></svg>';
   const btnRefreshAll = document.getElementById('btn-refresh-all');
+  document.getElementById('refresh-all-icon').innerHTML = REFRESH_ICON;
   const sortSelect = document.getElementById('sort-select');
   const layoutSelect = document.getElementById('layout-select');
   const btnListColumns = document.getElementById('btn-list-columns');
@@ -5347,7 +5369,7 @@ body {
       <td><span class="list-plan-name" title="${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}">${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}</span>
         <div class="list-credits">${resetCreditsBadge || resetCreditsPlaceholder}${creditsBadge || creditsPlaceholder}</div></td>
       <td><div class="list-actions">
-        <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="${quota.loading ? 'spinning' : ''}">🔄</span></button>
+        <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
         <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${name}" aria-pressed="${favorites.includes(file.name)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(file.name) ? '★' : '☆'}</button>
       </div></td>
     </tr>`;
@@ -5495,7 +5517,7 @@ body {
               ${editBtn}
             </div>
           </div>
-          <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="${quota.loading ? 'spinning' : ''}">🔄</span></button>
+          <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
           <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
         </header>
 
@@ -5513,8 +5535,8 @@ body {
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
           </div>
-          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
-            <span class="${quota.loading ? 'spinning' : ''}">🔄</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
+          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" aria-label="Refresh quota" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
+            <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
           </button>
         </footer>
       </article>
