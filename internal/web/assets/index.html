@@ -2073,6 +2073,7 @@ body {
           </div>
         </div>
 
+        <p id="ego-error-stats" class="meta-reset-soon" hidden></p>
         <div class="ego-kpis-grid">
           <div class="ego-kpi-card">
             <span class="ego-kpi-title">Total Tokens Burned</span>
@@ -2148,6 +2149,7 @@ body {
           </div>
         </div>
 
+        <p id="ego-error-timeline" class="meta-reset-soon" hidden></p>
         <div id="ego-chart-empty" class="ego-chart-empty" style="display:none;">
           <span class="ego-chart-empty-icon">📊</span>
           <span>No token activity recorded for this time range.</span>
@@ -2170,6 +2172,7 @@ body {
           <div class="ego-section-title">
             <span>🏆</span> Provider Speed &amp; Volume
           </div>
+          <p id="ego-error-providers" class="meta-reset-soon" hidden></p>
           <table class="ego-table">
             <thead>
               <tr>
@@ -2191,6 +2194,7 @@ body {
           <div class="ego-section-title">
             <span>🤖</span> Top Models
           </div>
+          <p id="ego-error-models" class="meta-reset-soon" hidden></p>
           <table class="ego-table">
             <thead>
               <tr>
@@ -2214,6 +2218,7 @@ body {
         <div class="ego-section-title">
           <span>👥</span> Top Accounts &amp; Key Usage
         </div>
+        <p id="ego-error-accounts" class="meta-reset-soon" hidden></p>
         <table class="ego-table">
           <thead>
             <tr>
@@ -2239,6 +2244,7 @@ body {
           <button type="button" id="btn-ego-maintenance-toggle" class="throughput-toggle" aria-expanded="false" aria-controls="ego-maintenance-body" title="Expand maintenance" aria-label="Expand maintenance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
         </div>
 
+        <p id="ego-error-settings" class="meta-reset-soon" hidden></p>
         <div id="ego-maintenance-body" hidden>
         <div class="ego-settings-row">
           <div class="ego-settings-info">
@@ -2388,6 +2394,7 @@ body {
   let authFiles = [];
   let apiKeyUsage = {};
   let quotaStore = {};
+  const pendingQuota = new Set();
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
@@ -3218,14 +3225,17 @@ body {
     isRefreshingAll = true;
 
     const icon = document.getElementById('refresh-all-icon');
+    const wasDisabled = btnRefreshAll.disabled;
+    btnRefreshAll.disabled = true;
     if (icon) icon.classList.add('spinning');
 
     const activeFiles = authFiles.filter(f => !f.disabled);
     const promises = activeFiles.map(file => fetchFileQuota(file, isManual));
     const statsPromise = refreshAllStats();
 
-    Promise.allSettled([...promises, statsPromise]).finally(() => {
+    return Promise.allSettled([...promises, statsPromise]).finally(() => {
       isRefreshingAll = false;
+      btnRefreshAll.disabled = wasDisabled;
       if (icon) icon.classList.remove('spinning');
       updateLoadedCount();
       renderThroughputPanel();
@@ -3235,12 +3245,13 @@ body {
 
   async function fetchFileQuota(file, isManual = false) {
     const fileName = file.name;
+    if (pendingQuota.has(fileName)) return;
+    pendingQuota.add(fileName);
     quotaStore[fileName] = { ...(quotaStore[fileName] || {}), loading: true, error: null };
     render();
 
-    const statsPromise = !isRefreshingAll ? refreshFileStats(file) : Promise.resolve();
-
     try {
+      const statsPromise = !isRefreshingAll ? refreshFileStats(file) : Promise.resolve();
       const provider = resolveProvider(file);
       const authIndex = file.auth_index ?? file.authIndex ?? file.name;
 
@@ -3273,6 +3284,7 @@ body {
         error: err?.message || 'Failed to fetch live quota from upstream',
       };
     } finally {
+      pendingQuota.delete(fileName);
       if (quotaStore[fileName]) {
         quotaStore[fileName].loading = false;
       }
@@ -4145,7 +4157,9 @@ body {
     });
   }
 
+  const pendingCredits = new Set();
   async function consumeCodexResetCredit(file) {
+    if (pendingCredits.has(file.name)) return;
     const fileName = file.name;
     const quota = quotaStore[fileName];
     const count = quota?.resetCredits?.availableCount ?? 0;
@@ -4178,6 +4192,8 @@ body {
       headers['Chatgpt-Account-Id'] = accountId;
     }
 
+    pendingCredits.add(fileName);
+    render();
     showToast('Consuming reset credit...', false);
 
     try {
@@ -4219,6 +4235,9 @@ body {
       }
     } catch (err) {
       showToast(`Network error: ${err.message || err}`, true);
+    } finally {
+      pendingCredits.delete(fileName);
+      render();
     }
   }
 
@@ -5266,9 +5285,10 @@ body {
         }
       }
 
+      const savedFile = activeModalFile;
       closeEditModal();
       render();
-      showToast(`Prefijo de "${activeModalFile}" actualizado a "${sanitized || '-'}"`);
+      showToast(`Prefix for "${savedFile}" updated to "${sanitized || '-'}"`);
     } catch (err) {
       if (modalErrorMsg) {
         modalErrorMsg.textContent = err.message || 'Error al guardar el prefijo';
@@ -5405,6 +5425,8 @@ body {
   }
 
   function renderListQuota(quota, kind) {
+    if (quota?.loading) return '<td class="list-quota">Loading…</td>';
+    if (quota?.error) return `<td class="list-quota" title="${escapeHtml(quota.error)}"><span class="meta-reset-soon">Error</span></td>`;
     const percent = lowestPercentOfKind(quota, kind);
     if (percent === null) return '<td class="list-quota">—</td>';
     const fillClass = percent < 10 ? 'critical' : percent < 30 ? 'warning' : '';
@@ -5426,7 +5448,7 @@ body {
     const resetCreditsCount = quota.resetCredits?.availableCount;
     if (typeof resetCreditsCount === 'number') compactInfo.push(`Reset credits: ${resetCreditsCount}`);
     const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
-      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
+      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" ${pendingCredits.has(fileName) ? 'disabled' : ''} data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
       : '';
     let creditsBadge = '';
     if ((provider === 'codex' || provider === 'unknown') && quota.credits) {
@@ -5462,7 +5484,7 @@ body {
       <td><span class="list-plan-name" title="${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}">${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}</span>
         <div class="list-credits">${resetCreditsBadge || resetCreditsPlaceholder}${creditsBadge || creditsPlaceholder}</div></td>
       <td><div class="list-actions">
-        <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
+        <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live || pendingQuota.has(file.name) || quota.loading ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
         <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${name}" aria-pressed="${favorites.includes(file.name)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(file.name) ? '★' : '☆'}</button>
       </div></td>
     </tr>`;
@@ -5610,7 +5632,7 @@ body {
               ${editBtn}
             </div>
           </div>
-          <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
+          <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota || pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
           <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
         </header>
 
@@ -5628,7 +5650,7 @@ body {
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
           </div>
-          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" aria-label="Refresh quota" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
+          <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" aria-label="Refresh quota" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
             <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
           </button>
         </footer>
@@ -5696,6 +5718,28 @@ body {
     return num.toLocaleString();
   }
 
+  let egoLoadVersion = 0;
+  let egoLoadsPending = 0;
+  let egoRefreshWasDisabled = false;
+
+  async function fetchEgoSection(endpoint) {
+    const response = await egoApiFetch(endpoint);
+    if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+    const data = await response.json();
+    const isList = /^\/(providers|models|accounts|timeline)/.test(endpoint);
+    if (!data || data.error || (isList ? !Array.isArray(data) : typeof data !== 'object' || Array.isArray(data))) {
+      throw new Error(String(data?.error || 'Invalid response'));
+    }
+    // Only numeric counters called directly by these renderers are required.
+    const counters = endpoint.startsWith('/stats?') ? ['total_requests', 'total_success', 'total_failed']
+      : endpoint === '/settings' ? ['total_records'] : [];
+    if (counters.some(field => !Number.isFinite(data[field]))
+      || (endpoint.startsWith('/providers?') && data.some(row => !row || typeof row.provider !== 'string' || !Number.isFinite(row.total_requests)))) {
+      throw new Error('Invalid response');
+    }
+    return data;
+  }
+
   async function loadEgoOverview() {
     const key = getManagementKey();
     const egoWarn = document.getElementById('ego-auth-warning');
@@ -5729,22 +5773,30 @@ body {
       return;
     }
 
+    const version = ++egoLoadVersion;
+    const refresh = document.getElementById('ego-btn-refresh');
+    if (egoLoadsPending++ === 0) egoRefreshWasDisabled = refresh.disabled;
+    refresh.disabled = true;
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
-        egoApiFetch(`/stats?range=${currentEgoRange}&provider=all`).then(r => r.json()),
-        egoApiFetch(`/providers?range=${currentEgoRange}`).then(r => r.json()),
-        egoApiFetch(`/models?range=${currentEgoRange}&provider=all`).then(r => r.json()),
-        egoApiFetch(`/accounts?range=${currentEgoRange}&provider=all`).then(r => r.json()),
-        egoApiFetch('/settings').then(r => r.json()),
-        egoApiFetch(`/timeline?range=${currentEgoRange}&provider=all`).then(r => r.json())
+        fetchEgoSection(`/stats?range=${currentEgoRange}&provider=all`),
+        fetchEgoSection(`/providers?range=${currentEgoRange}`),
+        fetchEgoSection(`/models?range=${currentEgoRange}&provider=all`),
+        fetchEgoSection(`/accounts?range=${currentEgoRange}&provider=all`),
+        fetchEgoSection('/settings'),
+        fetchEgoSection(`/timeline?range=${currentEgoRange}&provider=all`)
       ]);
+      if (version !== egoLoadVersion) return;
+      const sections = ['stats', 'providers', 'models', 'accounts', 'settings', 'timeline'];
+      [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes].forEach((result, index) => {
+        const section = sections[index];
+        const error = document.getElementById(`ego-error-${section}`);
+        error.hidden = result.status === 'fulfilled';
+        error.textContent = error.hidden ? '' : `${section}: unavailable. Displayed values may be outdated. Refresh to retry.`;
+      });
 
       const is401 = [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes].some(
-        r => r.status === 'fulfilled' && r.value && typeof r.value === 'object' && (
-          r.value.error === 'missing management key' ||
-          r.value.error === 'invalid management key' ||
-          String(r.value.error || '').includes('401')
-        )
+        r => r.status === 'rejected' && (r.reason?.status === 401 || /401|missing management key|invalid management key/.test(r.reason?.message || ''))
       );
 
       if (is401) {
@@ -5765,10 +5817,7 @@ body {
           `;
           egoWarn.style.display = 'block';
         }
-        return;
-      }
-
-      if (egoWarn) {
+      } else if (egoWarn) {
         egoWarn.style.display = 'none';
       }
 
@@ -5789,12 +5838,19 @@ body {
       }
       if (timelineRes.status === 'fulfilled' && timelineRes.value && !timelineRes.value.error) {
         renderEgoTimelineChart(timelineRes.value);
-      } else {
-        renderEgoTimelineChart([]);
+      } else if (document.getElementById('ego-chart-content').style.display !== 'block') {
+        for (const id of ['ego-chart-empty', 'ego-chart-content', 'ego-chart-tooltip']) {
+          document.getElementById(id).style.display = 'none';
+        }
+        for (const id of ['ego-chart-prompt-tokens', 'ego-chart-completion-tokens', 'ego-chart-peak-tokens']) {
+          document.getElementById(id).textContent = '—';
+        }
       }
     } catch (e) {
       console.error('Failed to load Ego analytics:', e);
-      showToast('Error cargando métricas de Ego', true);
+      showToast('Failed to load Ego analytics', true);
+    } finally {
+      if (--egoLoadsPending === 0) refresh.disabled = egoRefreshWasDisabled;
     }
   }
 
@@ -6321,12 +6377,16 @@ body {
 
     // Refresh button
     const btnRef = document.getElementById('ego-btn-refresh');
-    if (btnRef) btnRef.addEventListener('click', loadEgoOverview);
+    if (btnRef) btnRef.addEventListener('click', () => {
+      if (!btnRef.disabled) return loadEgoOverview();
+    });
 
     // Toggle active
     const toggle = document.getElementById('ego-toggle-active');
     if (toggle) {
       toggle.addEventListener('change', async () => {
+        if (toggle.disabled) return;
+        toggle.disabled = true;
         const enabled = toggle.checked;
         try {
           const res = await egoApiFetch('/settings', {
@@ -6342,6 +6402,8 @@ body {
         } catch (e) {
           toggle.checked = !enabled;
           showToast('Error al actualizar estado de ingestion', true);
+        } finally {
+          toggle.disabled = false;
         }
       });
     }
@@ -6350,9 +6412,11 @@ body {
     const btnPrune = document.getElementById('ego-btn-prune');
     if (btnPrune) {
       btnPrune.addEventListener('click', async () => {
+        if (btnPrune.disabled) return;
         const sel = document.getElementById('ego-prune-days');
         const days = parseInt(sel?.value || '30', 10);
         if (!confirm(`¿Estás seguro de purgar registros de más de ${days} días?`)) return;
+        btnPrune.disabled = true;
 
         try {
           const res = await egoApiFetch('/prune', {
@@ -6368,6 +6432,8 @@ body {
           loadEgoOverview();
         } catch (e) {
           showToast('Error purgando registros', true);
+        } finally {
+          btnPrune.disabled = false;
         }
       });
     }
@@ -6376,7 +6442,9 @@ body {
     const btnReset = document.getElementById('ego-btn-reset');
     if (btnReset) {
       btnReset.addEventListener('click', async () => {
+        if (btnReset.disabled) return;
         if (!confirm('⚠️ ¡PELIGRO! ¿Deseas vaciar por completo todas las estadísticas guardadas? Esta acción no se puede deshacer.')) return;
+        btnReset.disabled = true;
         try {
           const res = await egoApiFetch('/reset', {
             method: 'POST'
@@ -6389,6 +6457,8 @@ body {
           loadEgoOverview();
         } catch (e) {
           showToast('Error reiniciando base de datos', true);
+        } finally {
+          btnReset.disabled = false;
         }
       });
     }

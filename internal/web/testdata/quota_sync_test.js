@@ -79,6 +79,244 @@ test('moved Ego refresh retains selected-range overview requests and settings re
   assert.ok(requests.every(url => !url.includes('quota-refresh')));
 });
 
+test('T7 Ego reports section failures, preserves partial success and retries empty success', async () => {
+  let fail = true;
+  const dashboard = loadDashboard(async url => {
+    const endpoint = String(url).split('/ego/')[1].split('?')[0];
+    if (fail && endpoint !== 'providers') return { ok: false, status: 503, json: async () => [] };
+    return { ok: true, json: async () => endpoint === 'stats' ? { total_requests: 0, total_success: 0, total_failed: 0 } : endpoint === 'settings' ? { total_records: 0 } : [] };
+  });
+  await dashboard.loadEgoOverview();
+  for (const section of ['stats', 'models', 'accounts', 'settings', 'timeline']) {
+    assert.match(dashboard.getElement(`ego-error-${section}`).textContent, /unavailable/i, section);
+    assert.equal(dashboard.getElement(`ego-error-${section}`).hidden, false);
+  }
+  assert.match(dashboard.getElement('ego-tbody-providers').innerHTML, /No request records/);
+  assert.equal(dashboard.getElement('ego-chart-empty').style.display, 'none');
+  fail = false;
+  await dashboard.loadEgoOverview();
+  assert.equal(dashboard.getElement('ego-error-timeline').hidden, true);
+  assert.equal(dashboard.getElement('ego-chart-empty').style.display, 'flex');
+});
+
+test('T7 Ego rejects malformed successful stats/settings without interrupting independent sections', async () => {
+  const validStats = { total_requests: 0, total_success: 0, total_failed: 0 };
+  for (const section of ['stats', 'settings']) {
+    const fields = section === 'stats' ? ['total_requests', 'total_success', 'total_failed'] : ['total_records'];
+    const valid = section === 'stats' ? validStats : { total_records: 0 };
+    const malformed = [{}, ...fields.flatMap(field => [null, {}, [], '0', false].map(value => ({ ...valid, [field]: value })))];
+    for (const payload of malformed) {
+      const dashboard = loadDashboard(async url => {
+        const endpoint = String(url).split('/ego/')[1].split('?')[0];
+        return { ok: true, json: async () => endpoint === section ? payload : endpoint === 'stats' ? validStats : endpoint === 'settings' ? { total_records: 7 } : [] };
+      });
+      await dashboard.loadEgoOverview();
+      assert.equal(dashboard.getElement(`ego-error-${section}`).hidden, false, `${section}: ${JSON.stringify(payload)}`);
+      assert.match(dashboard.getElement(`ego-error-${section}`).textContent, /outdated.*Refresh/);
+      assert.equal(dashboard.getElement('ego-chart-empty').style.display, 'flex', 'later valid sections still render');
+      assert.match(dashboard.getElement('ego-tbody-providers').innerHTML, /No request records/);
+      if (section === 'stats') assert.equal(dashboard.getElement('ego-db-records').textContent, '7');
+      else assert.equal(dashboard.getElement('ego-kpi-requests').textContent, '0');
+      assert.equal(dashboard.getElement('ego-btn-refresh').disabled, false);
+    }
+  }
+});
+
+test('T7 Ego malformed provider rows preserve stale data without blocking later sections', async () => {
+  const valid = { provider: 'codex', total_requests: 2, total_tokens: 3 };
+  const malformed = [{}, null, ...[null, 7, {}, [], false].map(provider => ({ ...valid, provider })),
+    ...[undefined, null, '2'].map(total_requests => ({ ...valid, total_requests }))];
+  for (const populated of [false, true]) {
+    let providers = populated ? [valid] : [];
+    const dashboard = loadDashboard(async url => {
+      const endpoint = String(url).split('/ego/')[1].split('?')[0];
+      return { ok: true, json: async () => endpoint === 'providers' ? providers
+        : endpoint === 'stats' ? { total_requests: 0, total_success: 0, total_failed: 0 }
+        : endpoint === 'settings' ? { total_records: 7 } : [] };
+    });
+    await dashboard.loadEgoOverview();
+    const prior = dashboard.getElement('ego-tbody-providers').innerHTML;
+    assert.match(prior, populated ? /CODEX/ : /No request records/);
+    for (const row of malformed) {
+      providers = [row];
+      dashboard.getElement('ego-chart-empty').style.display = 'none';
+      dashboard.getElement('ego-db-records').textContent = 'old';
+      await dashboard.loadEgoOverview();
+      assert.equal(dashboard.getElement('ego-error-providers').hidden, false, JSON.stringify(row));
+      assert.match(dashboard.getElement('ego-error-providers').textContent, /outdated.*Refresh/);
+      assert.equal(dashboard.getElement('ego-tbody-providers').innerHTML, prior);
+      assert.equal(dashboard.getElement('ego-db-records').textContent, '7');
+      assert.equal(dashboard.getElement('ego-chart-empty').style.display, 'flex');
+    }
+    providers = [];
+    await dashboard.loadEgoOverview();
+    assert.equal(dashboard.getElement('ego-error-providers').hidden, true);
+    assert.match(dashboard.getElement('ego-tbody-providers').innerHTML, /No request records/);
+  }
+});
+
+test('T7 Ego populated partial failures retain flagged stale data and valid empty retry replaces it', async () => {
+  let phase = 0;
+  const stats = { total_requests: 9, total_success: 8, total_failed: 1, total_tokens: 30 };
+  const provider = { provider: 'old-provider', total_requests: 9, total_tokens: 30 };
+  const model = { model: 'old-model', total_requests: 9 };
+  const account = { account: 'old-account', total_requests: 9 };
+  const timeline = [{ time_bucket: '2026-10-10 12:00', timestamp: 1791633600000, prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 }];
+  const dashboard = loadDashboard(async url => {
+    const endpoint = String(url).split('/ego/')[1].split('?')[0];
+    if (phase === 1 && ['providers', 'accounts', 'timeline'].includes(endpoint)) return { ok: false, status: 503 };
+    const data = phase === 0 ? { stats, settings: { total_records: 9 }, providers: [provider], models: [model], accounts: [account], timeline }
+      : phase === 1 ? { stats: {}, settings: {}, models: [{ ...model, model: 'new-model' }] }
+      : { stats: { total_requests: 0, total_success: 0, total_failed: 0 }, settings: { total_records: 0 }, providers: [], models: [], accounts: [], timeline: [] };
+    return { ok: true, json: async () => data[endpoint] };
+  });
+  dashboard.setEgoRange('all');
+  await dashboard.loadEgoOverview();
+  assert.equal(dashboard.getElement('ego-kpi-requests').textContent, '9');
+  const oldChart = dashboard.getElement('ego-chart-svg').innerHTML;
+  assert.ok(oldChart.length > 0);
+  phase = 1;
+  await dashboard.loadEgoOverview();
+  for (const section of ['stats', 'settings', 'providers', 'accounts', 'timeline']) {
+    assert.equal(dashboard.getElement(`ego-error-${section}`).hidden, false, section);
+    assert.match(dashboard.getElement(`ego-error-${section}`).textContent, /outdated/);
+  }
+  assert.equal(dashboard.getElement('ego-kpi-requests').textContent, '9');
+  assert.equal(dashboard.getElement('ego-db-records').textContent, '9');
+  assert.match(dashboard.getElement('ego-tbody-providers').innerHTML, /OLD-PROVIDER/);
+  assert.match(dashboard.getElement('ego-tbody-accounts').innerHTML, /old-account/);
+  assert.match(dashboard.getElement('ego-tbody-models').innerHTML, /new-model/);
+  assert.equal(dashboard.getElement('ego-error-models').hidden, true);
+  assert.equal(dashboard.getElement('ego-chart-content').style.display, 'block');
+  assert.equal(dashboard.getElement('ego-chart-svg').innerHTML, oldChart);
+  phase = 2;
+  await dashboard.loadEgoOverview();
+  for (const section of ['stats', 'settings', 'providers', 'models', 'accounts', 'timeline']) assert.equal(dashboard.getElement(`ego-error-${section}`).hidden, true);
+  assert.equal(dashboard.getElement('ego-kpi-requests').textContent, '0');
+  assert.equal(dashboard.getElement('ego-db-records').textContent, '0');
+  for (const section of ['providers', 'models', 'accounts']) assert.doesNotMatch(dashboard.getElement(`ego-tbody-${section}`).innerHTML, /old-|new-model/i);
+  assert.equal(dashboard.getElement('ego-chart-empty').style.display, 'flex');
+  assert.equal(dashboard.getElement('ego-chart-content').style.display, 'none');
+});
+
+test('T7 Ego refresh guards duplicates, restores on rejection and ignores old ranges', async () => {
+  const responses = [];
+  const dashboard = loadDashboard(() => new Promise((resolve, reject) => responses.push({ resolve, reject })));
+  dashboard.initEgoListeners();
+  const button = dashboard.getElement('ego-btn-refresh');
+  const first = button.click();
+  assert.equal(button.disabled, true);
+  await button.click();
+  assert.equal(responses.length, 6);
+  dashboard.setEgoRange('7d');
+  const latest = dashboard.loadEgoOverview();
+  responses.slice(6).forEach(({ resolve }) => resolve({ ok: true, json: async () => [] }));
+  await latest;
+  responses.slice(0, 6).forEach(({ reject }) => reject(new Error('fixture failure')));
+  await first;
+  assert.equal(button.disabled, false);
+  assert.equal(dashboard.getElement('ego-error-timeline').hidden, true, 'old failure cannot replace latest success');
+  const retry = button.click();
+  responses.slice(12).forEach(({ reject }) => reject(new Error('fixture failure')));
+  await retry;
+  assert.equal(button.disabled, false);
+  assert.match(dashboard.getElement('ego-error-timeline').textContent, /unavailable/i);
+});
+
+test('T7 maintenance guards duplicate pending actions and restores controls on HTTP failure', async () => {
+  for (const [id, event] of [['ego-toggle-active', 'change'], ['ego-btn-prune', 'click'], ['ego-btn-reset', 'click']]) {
+    let finish, calls = 0;
+    const dashboard = loadDashboard(() => { calls++; return new Promise(resolve => { finish = resolve; }); });
+    dashboard.initEgoListeners();
+    const control = dashboard.getElement(id);
+    const pending = control.dispatch(event);
+    assert.equal(control.disabled, true, id);
+    await control.dispatch(event);
+    assert.equal(calls, 1, id);
+    finish({ ok: false, status: 503 });
+    await pending;
+    assert.equal(control.disabled, false, id);
+    control.disabled = true;
+    await control.dispatch(event);
+    assert.equal(calls, 1, 'original disabled control stays inactive');
+  }
+});
+
+test('T7 quota remains guarded when provider completes before account stats', async () => {
+  for (const statsFirst of [false, true]) {
+    const requests = [];
+    const dashboard = loadDashboard(url => new Promise((resolve, reject) => {
+      requests.push({ stats: String(url).includes('/auth-files?'), resolve, reject });
+    }));
+    const file = { name: 'fixture.json', type: 'codex', auth_index: 'fixture-index' };
+    const assertDisabled = disabled => {
+      for (const markup of [dashboard.renderCard(file), dashboard.renderListRow(file)]) {
+        const buttons = markup.match(/<button[^>]*id="btn-ref-[^>]*>/g);
+        assert.ok(buttons?.length);
+        for (const button of buttons) assert.equal(/\bdisabled\b/.test(button), disabled, button);
+      }
+    };
+    const pending = dashboard.fetchFileQuota(file, true);
+    assertDisabled(true);
+    requests.filter(request => request.stats === statsFirst).forEach(request => request.resolve({ ok: false, status: 503 }));
+    await new Promise(resolve => setImmediate(resolve));
+    assertDisabled(true);
+    const before = requests.length;
+    await dashboard.fetchFileQuota(file, true);
+    assert.equal(requests.length, before, 'no duplicate while either request is pending');
+    requests.filter(request => request.stats !== statsFirst).forEach(request => request.reject(new Error('fixture failure')));
+    await pending;
+    assertDisabled(false);
+    const retry = dashboard.fetchFileQuota(file, true);
+    assert.equal(requests.length, before + 4, 'rejection releases the operation for retry');
+    requests.slice(before).forEach(request => request.reject(new Error('fixture failure')));
+    await retry;
+    assertDisabled(false);
+  }
+});
+
+test('T7 quota and credit actions guard pending duplicates and restore after failure', async () => {
+  for (const action of ['all', 'file', 'credit']) {
+    let finish, calls = 0;
+    const response = new Promise(resolve => { finish = resolve; });
+    const dashboard = loadDashboard(() => { calls++; return response; });
+    const file = { name: 'fixture.json', type: 'codex', auth_index: 'fixture-index' };
+    dashboard.quotaStore[file.name] = { resetCredits: { availableCount: 1 } };
+    const run = () => action === 'all' ? dashboard.refreshAll(true)
+      : action === 'file' ? dashboard.fetchFileQuota(file, true) : dashboard.consumeCodexResetCredit(file);
+    const pending = run();
+    const initialCalls = calls;
+    if (action === 'all') assert.equal(dashboard.getElement('btn-refresh-all').disabled, true);
+    else assert.match(action === 'file' ? dashboard.renderCard(file) : dashboard.renderCreditBadges(file.name, 'codex', dashboard.quotaStore[file.name]).resetCreditsBadge, /disabled/);
+    await run();
+    assert.equal(calls, initialCalls);
+    finish({ ok: false, status: 503, json: async () => ({}) });
+    await pending;
+    if (action === 'all') assert.equal(dashboard.getElement('btn-refresh-all').disabled, false);
+    else assert.doesNotMatch(action === 'file' ? dashboard.renderCard(file) : dashboard.renderCreditBadges(file.name, 'codex', dashboard.quotaStore[file.name]).resetCreditsBadge, /disabled[^>]*title="(?:Refresh|Click)/);
+  }
+});
+
+test('T7 List distinguishes loading, escaped error and no data without stale percentages', () => {
+  const dashboard = loadDashboard();
+  const stale = { groups: [{ rows: [{ weekly: true, percent: 75 }] }] };
+  assert.match(dashboard.renderListQuota({ ...stale, loading: true }, 'weekly'), /Loading/);
+  const error = dashboard.renderListQuota({ ...stale, error: '<failed>' }, 'weekly');
+  assert.match(error, /&lt;failed&gt;/);
+  assert.doesNotMatch(error, /75%|<failed>/);
+  assert.equal(dashboard.renderListQuota({}, 'weekly'), '<td class="list-quota">—</td>');
+});
+
+test('T7 prefix toast retains the saved filename after modal cleanup', async () => {
+  const dashboard = loadDashboard(async () => ({ ok: true }));
+  dashboard.setFiles([{ name: 'fixture.json' }]);
+  dashboard.setModalFile('fixture.json');
+  dashboard.getElement('modal-prefix-input').value = 'fixture';
+  await dashboard.handleSavePrefix();
+  assert.match(dashboard.toasts.at(-1).message, /"fixture.json"/);
+  assert.doesNotMatch(dashboard.toasts.at(-1).message, /null/);
+});
+
 test('credit badges share real balances and missing placeholders', () => {
   const { renderCreditBadges } = loadDashboard();
   const missing = renderCreditBadges('a', 'codex', {});
@@ -305,6 +543,12 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   }`;
   const exposure = `globalThis.__dashboardTest = {
     switchView,
+    handleSavePrefix,
+    loadEgoOverview,
+    consumeCodexResetCredit,
+    setFiles: value => { authFiles = value; },
+    setModalFile: value => { activeModalFile = value; },
+    toasts: [],
     initEgoListeners,
     matchesAccountSearch,
     sortFiles,
@@ -361,7 +605,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     quotaStore,
     compareSemver,
     checkForPluginUpdates,
-  };`;
+  };
+  showToast = (message, isError) => globalThis.__dashboardTest.toasts.push({ message, isError });`;
   const source = scriptMatch[1].replace(bootstrap, exposure);
   assert.notEqual(source, scriptMatch[1], 'dashboard bootstrap must be replaced for testing');
 
@@ -390,6 +635,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
         id,
         tagName: 'DIV',
         textContent: '',
+        value: '',
+        querySelectorAll() { return []; },
         title: '',
         disabled: false,
         dataset: {},
@@ -408,10 +655,9 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
           listeners[event] = listeners[event] || [];
           listeners[event].push(fn);
         },
-        click() {
-          if (listeners['click']) {
-            listeners['click'].forEach(fn => fn({ target: this }));
-          }
+        click() { return this.dispatch('click'); },
+        dispatch(event) {
+          return Promise.all((listeners[event] || []).map(fn => fn({ target: this })));
         },
       });
     }
@@ -435,6 +681,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   };
   const context = {
     console,
+    confirm: () => true,
     fetch: fetchImpl,
     localStorage: storage,
     navigator: { userAgent: 'node-test' },
