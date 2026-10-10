@@ -20,6 +20,31 @@ test('credit badges share real balances and missing placeholders', () => {
   assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
 });
 
+test('throughput collapse preference defaults, validates, and persists', () => {
+  assert.equal(loadDashboard().loadUiPrefs().throughputCollapsed, false);
+  for (const throughputCollapsed of ['true', 1, null, false]) {
+    assert.equal(loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ throughputCollapsed }) },
+    }).loadUiPrefs().throughputCollapsed, false);
+  }
+  const dashboard = loadDashboard(undefined, undefined, {
+    initialStorage: { 'cca-ui-prefs': JSON.stringify({ throughputCollapsed: true }) },
+  });
+  assert.equal(dashboard.loadUiPrefs().throughputCollapsed, true);
+  dashboard.setThroughputCollapsed(true);
+  const button = dashboard.getElement('btn-throughput-toggle');
+  assert.equal(button.attributes['aria-expanded'], 'false');
+  assert.equal(button.title, 'Expand throughput');
+  assert.equal(dashboard.getElement('throughput-chart').hidden, true);
+  dashboard.setThroughputCollapsed(false);
+  assert.equal(dashboard.loadUiPrefs().throughputCollapsed, false);
+  assert.equal(button.attributes['aria-expanded'], 'true');
+  assert.equal(button.title, 'Collapse throughput');
+  assert.equal(dashboard.getElement('throughput-chart').hidden, false);
+  dashboard.setThroughputCollapsed(true);
+  assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).throughputCollapsed, true);
+});
+
 test('quota display preference defaults, validates, and persists used mode', () => {
   assert.equal(loadDashboard().loadUiPrefs().quotaDisplay, 'remaining');
   for (const quotaDisplay of ['invalid', true, null]) {
@@ -117,6 +142,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     renderListRow,
     renderListQuota,
     setQuotaDisplay: (value) => setQuotaDisplay(value),
+    setThroughputCollapsed: (value) => setThroughputCollapsed(value),
     renderCreditBadges,
     isLowQuotaAccount,
     fetchCodexQuota,
@@ -423,14 +449,14 @@ test('list two-column preference accepts only true and round-trips', () => {
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -442,7 +468,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -540,7 +566,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {

@@ -357,7 +357,7 @@ body {
 
 /* Layout: list (account table) */
 .cards-grid.layout-list { display: block; min-width: 0; }
-.account-table-scroll { overflow-x: auto; }
+.account-table-scroll { overflow-x: auto; overflow-y: hidden; border-radius: var(--radius-card); border: 1px solid var(--border-color); background: var(--bg-card); }
 /* Two columns only while each table has room; otherwise one column (no overlap) */
 .list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 720px), 1fr)); gap: 12px calc(2 * var(--gap-x)); }
 .list-columns > * { min-width: 0; }
@@ -1024,6 +1024,19 @@ body {
   gap: 8px;
 }
 
+.throughput-toggle {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.throughput-toggle:hover { color: var(--text-primary); }
+.throughput-toggle svg { width: 16px; height: 16px; }
+.throughput-toggle[aria-expanded="false"] svg { transform: rotate(180deg); }
+
 .throughput-title-wrap {
   display: flex;
   align-items: center;
@@ -1085,6 +1098,8 @@ body {
   gap: 6px;
   position: relative;
 }
+
+.throughput-chart-container[hidden] { display: none; }
 
 .throughput-bars {
   display: flex;
@@ -1939,9 +1954,10 @@ body {
             <span class="kpi-label">Peak:</span>
             <span id="kpi-peak-reqs" class="kpi-val">0</span>
           </div>
+          <button type="button" id="btn-throughput-toggle" class="throughput-toggle" aria-expanded="true" aria-controls="throughput-chart" title="Collapse throughput" aria-label="Collapse throughput"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
         </div>
       </div>
-      <div class="throughput-chart-container">
+      <div id="throughput-chart" class="throughput-chart-container">
         <div id="throughput-bars" class="throughput-bars">
           <!-- Injected by JavaScript -->
         </div>
@@ -2291,6 +2307,7 @@ body {
   let currentSort = 'prefix-asc';
   let currentLayout = 'grid';
   let listTwoColumns = false;
+  let throughputCollapsed = false;
   let hideEmails = false;
   let quotaDisplay = 'remaining';
 
@@ -2363,7 +2380,7 @@ body {
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
-    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] };
+    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, throughputCollapsed: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] };
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (!raw) return defaults;
@@ -2374,6 +2391,7 @@ body {
         sort: UI_PREF_SORTS.includes(prefs.sort) ? prefs.sort : defaults.sort,
         layout: UI_PREF_LAYOUTS.includes(prefs.layout) ? prefs.layout : defaults.layout,
         listTwoColumns: prefs.listTwoColumns === true,
+        throughputCollapsed: prefs.throughputCollapsed === true,
         hideEmails: prefs.hideEmails === true,
         quotaDisplay: prefs.quotaDisplay === 'used' ? 'used' : defaults.quotaDisplay,
         favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
@@ -2382,6 +2400,17 @@ body {
     } catch (e) {
       return defaults;
     }
+  }
+
+  function setThroughputCollapsed(value) {
+    throughputCollapsed = value === true;
+    const button = document.getElementById('btn-throughput-toggle');
+    const chart = document.getElementById('throughput-chart');
+    button.setAttribute('aria-expanded', String(!throughputCollapsed));
+    button.title = throughputCollapsed ? 'Expand throughput' : 'Collapse throughput';
+    button.setAttribute('aria-label', button.title);
+    chart.hidden = throughputCollapsed;
+    saveUiPrefs({ throughputCollapsed });
   }
 
   function maskIdentity(text) {
@@ -2634,6 +2663,8 @@ body {
 
   function init() {
     const prefs = loadUiPrefs();
+    setThroughputCollapsed(prefs.throughputCollapsed);
+    document.getElementById('btn-throughput-toggle').addEventListener('click', () => setThroughputCollapsed(!throughputCollapsed));
     favorites = prefs.favorites;
     currentTab = prefs.tab;
     currentSort = prefs.sort;
