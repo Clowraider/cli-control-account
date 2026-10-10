@@ -6,6 +6,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('credit badges share real balances and missing placeholders', () => {
+  const { renderCreditBadges } = loadDashboard();
+  const missing = renderCreditBadges('a', 'codex', {});
+  assert.match(missing.resetCreditsPlaceholder, /No reset credits/);
+  assert.match(missing.creditsPlaceholder, /No credits/);
+  const real = renderCreditBadges('a"', 'codex', { resetCredits: { availableCount: 2 }, credits: { balance: '0' } });
+  assert.match(real.resetCreditsBadge, /btn-consume-credit/);
+  assert.match(real.resetCreditsBadge, /a&quot;/);
+  assert.match(real.creditsBadge, /🪙 0/);
+  assert.equal(real.resetCreditsPlaceholder + real.creditsPlaceholder, '');
+  assert.equal(renderCreditBadges('a', 'codex', { resetCredits: { availableCount: 0 } }).resetCreditsBadge, '');
+  assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -24,10 +38,22 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     init();
   }`;
   const exposure = `globalThis.__dashboardTest = {
+    matchesAccountSearch,
+    sortFiles,
+    setFavorites: (value) => { favorites = value; },
+    setSort: (value) => { currentSort = value; },
     fetchClaudeQuota,
+    lowestWeeklyPercent,
+    lowestPercentOfKind,
+    quotaKindDetail,
+    renderListRow,
+    renderCreditBadges,
+    isLowQuotaAccount,
     fetchCodexQuota,
     loadUiPrefs,
     saveUiPrefs,
+    isLowQuota: (row) => isLowQuota(row),
+    setLowQuotaThreshold: (value) => { lowQuotaThreshold = value; },
     maskIdentity,
     displayIdentity,
     setHideEmails,
@@ -45,6 +71,8 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     formatResetInfo,
     formatDuration,
     renderCard,
+    renderActivityBar,
+    renderCardMiniActivity,
     buildCodexQuotaRows,
     parseKimiQuotaUrl,
     resolveKimiQuotaUrl,
@@ -90,6 +118,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
         disabled: false,
         dataset: {},
         attributes: {},
+        style: {},
         setAttribute(name, value) {
           this.attributes[name] = String(value);
         },
@@ -176,16 +205,135 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   return context.__dashboardTest;
 }
 
+test('weekly minimum spans groups and ignores non-weekly or non-finite data', () => {
+  const dashboard = loadDashboard();
+  assert.equal(dashboard.lowestWeeklyPercent({ groups: [
+    { rows: [{ weekly: true, percent: 35 }, { percent: 0 }] },
+    { rows: [{ weekly: true, percent: 15 }, { weekly: true, percent: null }, { weekly: true, percent: Infinity }] },
+  ] }), 15);
+  for (const quota of [undefined, {}, { groups: [{ rows: [{ percent: 0 }] }] },
+    { groups: [{ rows: [{ weekly: true, percent: null }, { weekly: true }] }] }]) {
+    assert.equal(dashboard.lowestWeeklyPercent(quota), null);
+    assert.equal(dashboard.isLowQuotaAccount(quota), false);
+  }
+});
+
+test('list window minima and hover details span groups and ignore unrelated data', () => {
+  const dashboard = loadDashboard();
+  const quota = { groups: [
+    { title: 'Gemini Models', rows: [{ fiveHour: true, percent: 97 }, { weekly: true, percent: 80 }, { percent: 0 }] },
+    { name: 'Claude and GPT Models', rows: [{ fiveHour: true, percent: 43 }, { weekly: true, percent: 25 }, { fiveHour: true, percent: null }] },
+  ] };
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 43);
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 25);
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97% · Claude and GPT Models: 43%');
+  for (const empty of [null, {}, { groups: [{ rows: [{ percent: 0 }, { fiveHour: true, percent: null }, { fiveHour: true, percent: Infinity }] }] }]) {
+    assert.equal(dashboard.lowestPercentOfKind(empty, 'fiveHour'), null);
+    assert.equal(dashboard.lowestPercentOfKind(empty, 'weekly'), null);
+    assert.equal(dashboard.quotaKindDetail(empty, 'fiveHour'), '');
+  }
+});
+
+test('list rows reuse actions and mask and escape account text', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'person@example.com.json', email: 'person@example.com', provider: 'codex', prefix: '<work>' };
+  const raw = dashboard.renderListRow(file);
+  assert.match(raw, /person@example.com/);
+  assert.match(raw, /&lt;work&gt;/);
+  assert.match(raw, /btn-favorite/);
+  assert.match(raw, /btn-ref-person@example.com.json/);
+  assert.doesNotMatch(raw, /btn-edit-prefix|btn-consume-credit|toggle-status-/);
+  dashboard.setHideEmails(true);
+  const masked = dashboard.renderListRow(file);
+  assert.match(masked, /title="pe\*{7}">pe\*{7}/);
+});
+
+test('low quota accounts use a strict weekly threshold', () => {
+  const dashboard = loadDashboard();
+  const quota = percent => ({ groups: [{ rows: [{ weekly: true, percent }] }] });
+  assert.equal(dashboard.isLowQuotaAccount(quota(19)), true);
+  assert.equal(dashboard.isLowQuotaAccount(quota(20)), false);
+  dashboard.setLowQuotaThreshold(30);
+  assert.equal(dashboard.isLowQuotaAccount(quota(20)), true);
+  assert.equal(dashboard.isLowQuotaAccount(quota(30)), false);
+});
+
+test('favorites sanitize, round-trip, and accept fav-first sorting', () => {
+  for (const [value, expected] of [[['one', 3, null, 'two'], ['one', 'two']], ['bad', []], [null, []]]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ favorites: value, sort: 'fav-first' }) },
+    });
+    assert.deepEqual(Array.from(dashboard.loadUiPrefs().favorites), expected);
+    assert.equal(dashboard.loadUiPrefs().sort, 'fav-first');
+    dashboard.saveUiPrefs({ favorites: ['saved.json'] });
+    assert.deepEqual(Array.from(dashboard.loadUiPrefs().favorites), ['saved.json']);
+  }
+});
+
+test('search matches raw identity, prefix and filename but never account secrets', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'Credential.json', email: 'Person@Example.com', prefix: 'Work', account: 'secret-only-value' };
+  for (const query of ['', 'PERSON@', 'work', 'CREDENTIAL.JSON']) {
+    assert.equal(dashboard.matchesAccountSearch(file, query), true);
+  }
+  dashboard.setHideEmails(true);
+  assert.equal(dashboard.matchesAccountSearch(file, 'person@'), true);
+  assert.equal(dashboard.matchesAccountSearch(file, 'secret-only-value'), false);
+  assert.equal(dashboard.matchesAccountSearch({ name: 'other.json', project_id: 'ProjectABC' }, 'projectabc'), true);
+});
+
+test('fav-first sorts each favorite group with the prefix-asc comparator', () => {
+  const dashboard = loadDashboard();
+  dashboard.setFavorites(['fav-z', 'fav-a', 'fav-none']);
+  dashboard.setSort('fav-first');
+  const files = [
+    { name: 'rest-z', prefix: 'Z' }, { name: 'fav-z', prefix: 'Z' },
+    { name: 'rest-a', prefix: 'A' }, { name: 'fav-none', prefix: '' },
+    { name: 'fav-a', prefix: 'A' }, { name: 'rest-none', prefix: '' },
+  ];
+  assert.deepEqual(Array.from(dashboard.sortFiles(files), f => f.name),
+    ['fav-a', 'fav-z', 'fav-none', 'rest-a', 'rest-z', 'rest-none']);
+  assert.equal(files[0].name, 'rest-z');
+});
+
+test('layout preference defaults, validates, and persists', () => {
+  assert.equal(loadDashboard().loadUiPrefs().layout, 'grid');
+  for (const value of ['grid', 'list', 'compact', 'table', '', null, 1]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ layout: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().layout, ['grid', 'list', 'compact'].includes(value) ? value : 'grid');
+    dashboard.saveUiPrefs({ layout: 'compact' });
+    assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).layout, 'compact');
+    assert.equal(dashboard.loadUiPrefs().layout, 'compact');
+  }
+});
+
+test('list two-column preference accepts only true and round-trips', () => {
+  assert.equal(loadDashboard().loadUiPrefs().listTwoColumns, false);
+  for (const value of [true, false, 'true', 1, null]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ listTwoColumns: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().listTwoColumns, value === true);
+    for (const enabled of [true, false]) {
+      dashboard.saveUiPrefs({ listTwoColumns: enabled });
+      assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).listTwoColumns, enabled);
+      assert.equal(dashboard.loadUiPrefs().listTwoColumns, enabled);
+    }
+  }
+});
+
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -197,7 +345,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -209,6 +357,30 @@ test('saving UI preferences merges fields and preserves unknown keys', () => {
   assert.deepEqual(JSON.parse(dashboard.storageData.get('cca-ui-prefs')), {
     v: 1, tab: 'claude', sort: 'az', future: { enabled: true },
   });
+});
+
+test('low quota threshold accepts only the numeric allowlist and persists', () => {
+  for (const value of [10, 20, 30, 50, 0, 25, '30', null]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ lowQuotaThreshold: value }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().lowQuotaThreshold, [10, 20, 30, 50].includes(value) ? value : 20);
+    dashboard.saveUiPrefs({ lowQuotaThreshold: 30 });
+    assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).lowQuotaThreshold, 30);
+  }
+});
+
+test('low quota warnings follow the current threshold without changing cached rows', () => {
+  const dashboard = loadDashboard();
+  const row = { percent: 25, warning: false };
+  assert.equal(dashboard.isLowQuota(row), false);
+  dashboard.setLowQuotaThreshold(30);
+  assert.equal(dashboard.isLowQuota(row), true);
+  assert.equal(dashboard.isLowQuota({ percent: 30 }), false);
+  assert.equal(dashboard.isLowQuota({ percent: 0, warning: true }), true);
+  assert.equal(dashboard.isLowQuota({ percent: null, warning: false }), false);
+  dashboard.setLowQuotaThreshold(20);
+  assert.equal(dashboard.isLowQuota(row), false);
 });
 
 test('hide email preference restores only boolean true', () => {
@@ -271,7 +443,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', hideEmails: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
@@ -438,7 +610,7 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
   // Render card should contain badge
   const cardHtml = dashboard.renderCard(file);
   assert.ok(cardHtml.includes('reset-credits-badge'), 'card should render reset-credits-badge');
-  assert.ok(cardHtml.includes('⚡ 2 reset credits'), 'card should display credit count');
+  assert.ok(cardHtml.includes('⚡ 2<span class="credit-words"> reset credits</span>'), 'card should display credit count with compact-hideable words');
   assert.ok(cardHtml.includes('codex-credits-badge'), 'card should render codex-credits-badge');
   assert.ok(cardHtml.includes('25.5'), 'card should render balance');
   assert.ok(cardHtml.includes('codex-expiry-badge'), 'card should render codex-expiry-badge');
@@ -565,11 +737,15 @@ test('Scope 3: fetchClaudeQuota parses profile in parallel and model-specific wi
 
   // Critical regression test: utilization 2% should result in 98% remaining, NOT 0%
   const weeklyRow = rows.find(r => r.label === 'Weekly Limit');
+  assert.equal(weeklyRow.weekly, true);
+  assert.equal(rows.find(r => r.label === 'Fable Limit').weekly, false);
+  assert.equal(opusRow.weekly, false);
   assert.equal(weeklyRow.percent, 98);
   assert.equal(weeklyRow.percentLabel, '98% remaining');
   assert.equal(weeklyRow.warning, false);
 
   const fiveHourRow = rows.find(r => r.label === 'Five Hour Limit');
+  assert.equal(fiveHourRow.fiveHour, true);
   assert.equal(fiveHourRow.percent, 90);
   assert.equal(fiveHourRow.percentLabel, '90% remaining');
   assert.equal(fiveHourRow.warning, false);
@@ -811,6 +987,61 @@ test('xAI auto-refresh does not call chat/completions ping unattended and render
     return body.url && body.url.includes('chat/completions');
   });
   assert.equal(chatCallsManual.length, 1, 'manual refresh should trigger verification ping when billing fails');
+});
+
+test('Codex rate-limit windows are classified by duration with legacy order fallback', () => {
+  const dashboard = loadDashboard();
+  const window = (seconds, usedPercent) => ({ limit_window_seconds: seconds, used_percent: usedPercent });
+
+  const weeklyOnly = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window(604800, 25) },
+  });
+  assert.deepEqual([...weeklyOnly].map(row => row.label), ['Weekly Limit']);
+  assert.equal(weeklyOnly[0].percent, 75);
+
+  const swapped = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: window(604800, 30),
+      secondary_window: window(18000, 10),
+    },
+  });
+  assert.deepEqual([...swapped].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(swapped[0].percent, 90);
+  assert.equal(swapped[1].percent, 70);
+
+  const normal = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: window(18000, 15),
+      secondary_window: window(604800, 40),
+    },
+  });
+  assert.deepEqual([...normal].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(normal[0].percent, 85);
+  assert.equal(normal[1].percent, 60);
+
+  const legacy = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: { used_percent: 20 },
+      secondary_window: { used_percent: 35 },
+    },
+  });
+  assert.deepEqual([...legacy].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(legacy[0].percent, 80);
+  assert.equal(legacy[1].percent, 65);
+
+  const stringSeconds = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window('604800', 45) },
+  });
+  assert.deepEqual([...stringSeconds].map(row => row.label), ['Weekly Limit']);
+  assert.equal(stringSeconds[0].percent, 55);
+
+  const monthly = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window(30 * 24 * 60 * 60, 50) },
+  });
+  assert.deepEqual([...monthly].map(row => row.label), ['Monthly Limit']);
+
+  const limitOnly = dashboard.buildCodexQuotaRows({ rate_limit: { limit_reached: true } });
+  assert.equal(limitOnly.length, 2);
 });
 
 test('Codex quota row precedence matches CPAMC: usedPercent takes precedence over limit_reached/allowed flags', () => {
@@ -1055,4 +1286,13 @@ test('xAI parity: fetchXaiQuota enriches plan with subscription info from user a
   assert.ok(stored);
   assert.equal(stored.plan, 'SuperGrok Heavy');
   assert.deepEqual({ ...stored.subscriptionPlan }, { label: 'SuperGrok Heavy', tier: 'elite' });
+});
+
+test('activity bar is reused in the full mini activity and escapes tooltips', () => {
+  const dashboard = loadDashboard();
+  const file = { recent_requests: [{ success: 2, failed: 1, time: '<unsafe>' }] };
+  const bar = dashboard.renderActivityBar(file);
+  assert.ok(bar.includes('activity-col'));
+  assert.ok(dashboard.renderCardMiniActivity(file).includes(bar));
+  assert.ok(!bar.includes('<unsafe>'));
 });

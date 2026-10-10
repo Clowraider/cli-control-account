@@ -313,6 +313,30 @@ body {
   align-items: stretch;
 }
 
+/* Layout: list (account table) */
+.cards-grid.layout-list { display: block; min-width: 0; }
+.account-table-scroll { overflow-x: auto; }
+/* Two columns only while each table has room; otherwise one column (no overlap) */
+.list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(640px, 1fr)); gap: 12px; }
+/* Plan text is the first thing to shrink when a table gets narrow */
+.account-table-scroll { container-type: inline-size; }
+@container (max-width: 760px) {
+  .list-plan-name { display: block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+}
+.account-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg-card); }
+.account-table th, .account-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+.account-table th { color: var(--text-secondary); text-align: center; }
+.account-table td { width: 1%; white-space: nowrap; }
+.account-table td.list-activity { width: auto; min-width: 120px; white-space: normal; }
+.account-table tbody tr:nth-child(even) { background: var(--bg-primary); }
+.account-table .prefix-row { margin-top: 3px; }
+.account-table .list-quota { min-width: 90px; }
+.account-table .track { margin-top: 4px; height: 4px; }
+.list-actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.list-credits { display: flex; gap: 4px; margin-top: 4px; white-space: nowrap; }
+/* Fixed slots so 1-2 digit counts and placeholders keep the same width */
+.list-credits > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
+
 /* Quota Card */
 .card {
   position: relative;
@@ -787,6 +811,73 @@ body {
   flex-direction: column;
   gap: 3px;
 }
+
+/* Layout: compact cards */
+.layout-compact .provider-icon-box,
+.layout-compact .card-footer,
+.layout-compact .plan-label,
+.layout-compact .plan-type,
+.layout-compact .codex-expiry-badge,
+.layout-compact .credit-words, .layout-list .credit-words {
+  display: none;
+}
+
+/* Square icon buttons (favorite, refresh) */
+.btn-hide-emails.btn-icon,
+.btn-card-refresh.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+/* The star glyph sits low in most fonts; lift it to the optical center */
+.btn-favorite.btn-icon { padding-bottom: 2px; }
+
+/* Muted placeholder when an account has no reset credits or credits (all layouts) */
+.credit-placeholder {
+  display: inline-flex;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* Layout: compact cards (continued) */
+.compact-prefix { display: none; }
+.layout-compact .compact-prefix {
+  display: inline-block;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  font-size: 10px;
+}
+.layout-compact .prefix-row,
+.layout-compact .group-models { display: none; }
+.layout-compact .card { padding: 8px 10px; gap: 6px; }
+.layout-compact .card-body { gap: 5px; }
+.layout-compact .quota-group { gap: 4px; padding-top: 4px; }
+.layout-compact .group-title { margin: 0; }
+.layout-compact .meter-row { gap: 2px; }
+.layout-compact .track { height: 3px; }
+.btn-card-refresh.btn-compact-refresh { display: none; }
+.layout-compact .btn-compact-refresh { display: inline-flex; }
+.compact-activity { display: none; }
+.layout-compact .compact-activity { display: block; margin-left: auto; width: 50%; min-width: 0; }
+.layout-compact .compact-activity .activity-bar { height: 14px; }
+.layout-compact .compact-activity .activity-col { min-width: 0; }
+.layout-compact .card-activity-wrap { display: none; }
+
+/* Layout: list (continued) */
+.layout-list .activity-bar { height: 20px; }
+.layout-list .card-activity-wrap { border-top: 0; padding-top: 0; margin-top: 0; }
+.layout-list .activity-title { display: none; }
 
 /* Card Mini Activity Sparkline */
 .card-activity-wrap {
@@ -1842,16 +1933,33 @@ body {
           <span id="count-kimi" class="tab-count">0</span>
         </button>
       </nav>
+      <button id="btn-favorites" type="button" class="btn-hide-emails" aria-pressed="false" title="Show only favorite accounts">Favorites</button>
+      <button id="btn-low-quota" type="button" class="btn-hide-emails" aria-pressed="false" title="Show only accounts whose lowest weekly quota is below the threshold">Low quota</button>
+      <select id="low-quota-threshold" class="sort-select" style="display: none;" aria-label="Low quota threshold" title="Weekly remaining quota considered low">
+        <option value="10">10%</option>
+        <option value="20" selected>20%</option>
+        <option value="30">30%</option>
+        <option value="50">50%</option>
+      </select>
+
+      <input type="search" id="account-search" class="sort-select" style="margin-right: auto;" placeholder="Search shown accounts" aria-label="Search shown accounts" title="Filter the accounts currently shown by name, email or prefix">
 
       <div class="sort-wrap">
         <button id="btn-hide-emails" type="button" class="btn-hide-emails" aria-pressed="false" title="Mask email addresses on the cards">Hide emails</button>
-        <select id="sort-select" class="sort-select" aria-label="Sort options">
+        <select id="sort-select" class="sort-select" aria-label="Sort options" title="Card order">
           <option value="prefix-asc" selected>Prefix (A-Z)</option>
+          <option value="fav-first">Favorites first</option>
           <option value="prefix-desc">Prefix (Z-A)</option>
           <option value="soonest">Soonest recovery</option>
           <option value="az">A-Z Name</option>
           <option value="default">Default</option>
         </select>
+        <select id="layout-select" class="sort-select" aria-label="Layout" title="Card layout">
+          <option value="grid" selected>Grid</option>
+          <option value="list">List</option>
+          <option value="compact">Compact</option>
+        </select>
+        <button id="btn-list-columns" type="button" class="btn-hide-emails btn-icon" aria-pressed="false" title="Show the list in two columns" aria-label="Two-column list" style="display: none;">◫</button>
       </div>
     </div>
 
@@ -2126,17 +2234,64 @@ body {
 
   let currentTab = 'all';
   let currentSort = 'prefix-asc';
+  let currentLayout = 'grid';
+  let listTwoColumns = false;
   let hideEmails = false;
   const UI_PREFS_KEY = 'cca-ui-prefs';
   const UI_PREF_TABS = ['all', 'claude', 'antigravity', 'codex', 'xai', 'kimi'];
-  const UI_PREF_SORTS = ['prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
+  const UI_PREF_SORTS = ['fav-first', 'prefix-asc', 'prefix-desc', 'soonest', 'az', 'default'];
+  const UI_PREF_THRESHOLDS = [10, 20, 30, 50];
+  const UI_PREF_LAYOUTS = ['grid', 'list', 'compact'];
+  let lowQuotaThreshold = 20;
+  let lowQuotaOnly = false;
+  let favorites = [];
+  let favoritesOnly = false;
+
+  function lowestWeeklyPercent(quota) {
+    return lowestPercentOfKind(quota, 'weekly');
+  }
+
+  function quotaKindDetail(quota, kind) {
+    const details = [];
+    for (const group of quota?.groups || []) {
+      for (const row of group.rows || []) {
+        if (row[kind] === true && Number.isFinite(row.percent)) {
+          details.push(`${group.title || group.name || 'Models'}: ${row.percent}%`);
+        }
+      }
+    }
+    return details.join(' · ');
+  }
+
+  function lowestPercentOfKind(quota, kind) {
+    let lowest = null;
+    for (const group of quota?.groups || []) {
+      for (const row of group.rows || []) {
+        if (row[kind] === true && Number.isFinite(row.percent)) {
+          lowest = lowest === null ? row.percent : Math.min(lowest, row.percent);
+        }
+      }
+    }
+    return lowest;
+  }
+
+  function isLowQuotaAccount(quota) {
+    const percent = lowestWeeklyPercent(quota);
+    return percent !== null && percent < lowQuotaThreshold;
+  }
+
+  function isLowQuota(row) {
+    return row.percent !== null && row.percent !== undefined && !isNaN(row.percent)
+      ? row.percent < lowQuotaThreshold
+      : row.warning;
+  }
   let authFiles = [];
   let apiKeyUsage = {};
   let quotaStore = {};
   let serverTimeOffsetMs = 0;
 
   function loadUiPrefs() {
-    const defaults = { tab: 'all', sort: 'prefix-asc', hideEmails: false };
+    const defaults = { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] };
     try {
       const raw = localStorage.getItem(UI_PREFS_KEY);
       if (!raw) return defaults;
@@ -2145,7 +2300,11 @@ body {
       return {
         tab: UI_PREF_TABS.includes(prefs.tab) ? prefs.tab : defaults.tab,
         sort: UI_PREF_SORTS.includes(prefs.sort) ? prefs.sort : defaults.sort,
+        layout: UI_PREF_LAYOUTS.includes(prefs.layout) ? prefs.layout : defaults.layout,
+        listTwoColumns: prefs.listTwoColumns === true,
         hideEmails: prefs.hideEmails === true,
+        favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
+        lowQuotaThreshold: UI_PREF_THRESHOLDS.includes(prefs.lowQuotaThreshold) ? prefs.lowQuotaThreshold : defaults.lowQuotaThreshold,
       };
     } catch (e) {
       return defaults;
@@ -2308,6 +2467,31 @@ body {
   const grid = document.getElementById('cards-grid');
   const btnRefreshAll = document.getElementById('btn-refresh-all');
   const sortSelect = document.getElementById('sort-select');
+  const layoutSelect = document.getElementById('layout-select');
+  const btnListColumns = document.getElementById('btn-list-columns');
+  btnListColumns.addEventListener('click', () => {
+    listTwoColumns = !listTwoColumns;
+    saveUiPrefs({ listTwoColumns });
+    render();
+  });
+  const btnLowQuota = document.getElementById('btn-low-quota');
+  btnLowQuota.addEventListener('click', () => {
+    lowQuotaOnly = !lowQuotaOnly;
+    btnLowQuota.setAttribute('aria-pressed', String(lowQuotaOnly));
+    btnLowQuota.classList.toggle('active', lowQuotaOnly);
+    thresholdSelect.style.display = lowQuotaOnly ? '' : 'none';
+    render();
+  });
+  const btnFavorites = document.getElementById('btn-favorites');
+  btnFavorites.addEventListener('click', () => {
+    favoritesOnly = !favoritesOnly;
+    btnFavorites.setAttribute('aria-pressed', String(favoritesOnly));
+    btnFavorites.classList.toggle('active', favoritesOnly);
+    render();
+  });
+  const accountSearch = document.getElementById('account-search');
+  accountSearch.addEventListener('input', () => render());
+  const thresholdSelect = document.getElementById('low-quota-threshold');
   const btnHideEmails = document.getElementById('btn-hide-emails');
 
   function updateHideEmailsButton() {
@@ -2356,10 +2540,31 @@ body {
 
   function init() {
     const prefs = loadUiPrefs();
+    favorites = prefs.favorites;
     currentTab = prefs.tab;
     currentSort = prefs.sort;
     hideEmails = prefs.hideEmails;
     if (sortSelect) sortSelect.value = currentSort;
+    currentLayout = prefs.layout;
+    listTwoColumns = prefs.listTwoColumns;
+    if (layoutSelect) {
+      layoutSelect.value = currentLayout;
+      layoutSelect.addEventListener('change', () => {
+        currentLayout = UI_PREF_LAYOUTS.includes(layoutSelect.value) ? layoutSelect.value : 'grid';
+        saveUiPrefs({ layout: currentLayout });
+        render();
+      });
+    }
+    lowQuotaThreshold = prefs.lowQuotaThreshold;
+    if (thresholdSelect) {
+      thresholdSelect.value = String(lowQuotaThreshold);
+      thresholdSelect.addEventListener('change', () => {
+        const value = Number(thresholdSelect.value);
+        lowQuotaThreshold = UI_PREF_THRESHOLDS.includes(value) ? value : 20;
+        saveUiPrefs({ lowQuotaThreshold });
+        render();
+      });
+    }
     updateHideEmailsButton();
     if (btnHideEmails) {
       btnHideEmails.addEventListener('click', () => setHideEmails(!hideEmails));
@@ -2747,6 +2952,12 @@ body {
     };
   }
 
+  function matchesAccountSearch(file, query) {
+    const search = String(query || '').toLowerCase();
+    return [deriveIdentity(file).primary, file.email, file.prefix, file.name]
+      .some(value => String(value || '').toLowerCase().includes(search));
+  }
+
   function resolveProvider(file) {
     return normalizeProviderName(file?.provider || file?.type);
   }
@@ -3041,6 +3252,8 @@ body {
         return {
           label: label,
           window: b.window,
+          weekly: `${labelLower} ${b.window || ''}`.toLowerCase().includes('week'),
+          fiveHour: label === 'Five Hour Limit',
           percent: percent,
           percentLabel: percentLabel,
           resetLabel: finalResetLabel,
@@ -3180,6 +3393,8 @@ body {
 
               rows.push({
                 label: def.label,
+                weekly: def.key === 'seven_day',
+                fiveHour: def.key === 'five_hour',
                 percent: pct,
                 percentLabel: percentLabel,
                 resetLabel: resetLabel,
@@ -3359,11 +3574,54 @@ body {
       const pWin = rateLimit.primary_window || rateLimit.primaryWindow;
       const sWin = rateLimit.secondary_window || rateLimit.secondaryWindow;
 
-      const pRow = processWindow(pWin, 'Five Hour Limit', limitReached, allowed);
-      if (pRow) rows.push(pRow);
+      // Parity with CPAMC (src/features/quota/providers/codex/data.ts): classify windows by duration first, then use order for legacy payloads.
+      const FIVE_HOUR_SECONDS = 18000;
+      const WEEK_SECONDS = 604800;
+      const MIN_MONTH_SECONDS = 28 * 24 * 60 * 60;
+      const MAX_MONTH_SECONDS = 31 * 24 * 60 * 60;
+      const getWindowSeconds = windowObj => {
+        const raw = windowObj?.limit_window_seconds ?? windowObj?.limitWindowSeconds;
+        if (raw === undefined || raw === null || raw === '') return null;
+        const seconds = Number(raw);
+        return Number.isFinite(seconds) ? seconds : null;
+      };
+      const isMonthlyWindow = windowObj => {
+        const seconds = getWindowSeconds(windowObj);
+        return seconds !== null && seconds >= MIN_MONTH_SECONDS && seconds <= MAX_MONTH_SECONDS;
+      };
+      const rawWindows = [pWin, sWin];
+      let fiveHourWindow = null;
+      let weeklyWindow = null;
+      for (const windowObj of rawWindows) {
+        if (!windowObj) continue;
+        const seconds = getWindowSeconds(windowObj);
+        if (seconds === FIVE_HOUR_SECONDS && !fiveHourWindow) {
+          fiveHourWindow = windowObj;
+        } else if ((seconds === WEEK_SECONDS || isMonthlyWindow(windowObj)) && !weeklyWindow) {
+          weeklyWindow = windowObj;
+        }
+      }
+      if (!fiveHourWindow) fiveHourWindow = pWin && pWin !== weeklyWindow ? pWin : null;
+      if (!weeklyWindow) weeklyWindow = sWin && sWin !== fiveHourWindow ? sWin : null;
 
-      const sRow = processWindow(sWin, 'Weekly Limit', limitReached, allowed);
-      if (sRow) rows.push(sRow);
+      // Preserve limit-only rows only when neither window exists in the payload.
+      const noWindows = !pWin && !sWin;
+      const fiveHourRow = (fiveHourWindow || noWindows) ? processWindow(
+        fiveHourWindow || pWin, 'Five Hour Limit', limitReached, allowed
+      ) : null;
+      if (fiveHourRow) {
+        fiveHourRow.fiveHour = true;
+        rows.push(fiveHourRow);
+      }
+
+      const weeklyLabel = isMonthlyWindow(weeklyWindow) ? 'Monthly Limit' : 'Weekly Limit';
+      const weeklyRow = (weeklyWindow || noWindows) ? processWindow(
+        weeklyWindow || sWin, weeklyLabel, limitReached, allowed
+      ) : null;
+      if (weeklyRow) {
+        weeklyRow.weekly = weeklyLabel === 'Weekly Limit';
+        rows.push(weeklyRow);
+      }
     }
 
     if (codeReviewLimit) {
@@ -4001,7 +4259,7 @@ body {
       if (used === null && limit === null) return;
       const resetMs = extractKimiResetMs(detail, item);
       const label = kimiWindowLabel(item, detail, windowObj, index);
-      rows.push(quotaRow(label, used, limit, resetMs, null));
+      rows.push({ ...quotaRow(label, used, limit, resetMs, null), weekly: label === 'Weekly Limit', fiveHour: label === 'Five Hour Limit' });
     });
     if (payload.usage && typeof payload.usage === 'object') {
       const usage = payload.usage;
@@ -4013,7 +4271,7 @@ body {
       }
       if (used !== null || limit !== null) {
         const resetMs = extractKimiResetMs(usage, null);
-        rows.push(quotaRow('Weekly Limit', used, limit, resetMs, null));
+        rows.push({ ...quotaRow('Weekly Limit', used, limit, resetMs, null), weekly: true });
       }
     }
     rows.sort((a, b) => getWindowOrder(a.label, '') - getWindowOrder(b.label, ''));
@@ -4244,6 +4502,7 @@ body {
             const remaining = Math.max(0, Math.min(100, Math.round(100 - billing.usagePercent)));
             rows.push({
               label: 'Weekly Limit',
+              weekly: true,
               percent: remaining,
               percentLabel: remaining === 100 ? 'Quota available' : `${remaining}% remaining`,
               resetLabel: resetInfo.ms ? resetInfo.label : 'Weekly window',
@@ -4253,6 +4512,7 @@ body {
           } else {
             rows.push({
               label: 'Weekly Limit',
+              weekly: true,
               percent: null,
               percentLabel: 'No data',
               resetLabel: resetInfo.ms ? resetInfo.label : 'No quota data',
@@ -4612,6 +4872,34 @@ body {
     }
   }
 
+  function renderActivityBar(file) {
+    const rawRecents = file?.recent_requests || file?.recentRequests || file?._raw?.recent_requests || file?._raw?.recentRequests || [];
+    const buckets = normalizeBuckets(rawRecents);
+    const padded = Array.from({ length: BUCKET_COUNT }, (_, i) => {
+      const offset = Math.max(0, BUCKET_COUNT - buckets.length);
+      return buckets[i - offset] || { success: 0, failed: 0 };
+    });
+    const scale = Math.max(1, ...padded.map(b => b.success + b.failed));
+    const colsHtml = padded.map(b => {
+      const s = b ? (Number(b.success) || 0) : 0;
+      const f = b ? (Number(b.failed) || 0) : 0;
+      const bTot = s + f;
+      if (bTot === 0) {
+        return `<div class="activity-col activity-col-idle" title="Idle (no requests)"></div>`;
+      }
+      const sPct = Math.round((s / scale) * 100);
+      const fPct = Math.round((f / scale) * 100);
+      return `
+        <div class="activity-col" title="${escapeHtml(b?.time || '')}: ${s} ok, ${f} failed">
+          ${f > 0 ? `<div class="activity-seg-failed" style="height:${fPct}%;"></div>` : ''}
+          ${s > 0 ? `<div class="activity-seg-success" style="height:${sPct}%;"></div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="activity-bar">${colsHtml}</div>`;
+  }
+
   function renderCardMiniActivity(file) {
     try {
       const rawRecents = file?.recent_requests || file?.recentRequests || file?._raw?.recent_requests || file?._raw?.recentRequests || [];
@@ -4623,36 +4911,15 @@ body {
 
       let totalSuccess = 0;
       let totalFailed = 0;
-      let peak = 0;
 
       padded.forEach(b => {
         if (!b) return;
         totalSuccess += b.success;
         totalFailed += b.failed;
-        const tot = b.success + b.failed;
-        if (tot > peak) peak = tot;
       });
 
       const totalReqs = totalSuccess + totalFailed;
       const rate = totalReqs > 0 ? Math.round((totalSuccess / totalReqs) * 100) : 100;
-      const scale = peak > 0 ? peak : 1;
-
-      const colsHtml = padded.map(b => {
-        const s = b ? (Number(b.success) || 0) : 0;
-        const f = b ? (Number(b.failed) || 0) : 0;
-        const bTot = s + f;
-        if (bTot === 0) {
-          return `<div class="activity-col activity-col-idle" title="Idle (no requests)"></div>`;
-        }
-        const sPct = Math.round((s / scale) * 100);
-        const fPct = Math.round((f / scale) * 100);
-        return `
-          <div class="activity-col" title="${b?.time || ''}: ${s} ok, ${f} failed">
-            ${f > 0 ? `<div class="activity-seg-failed" style="height:${fPct}%;"></div>` : ''}
-            ${s > 0 ? `<div class="activity-seg-success" style="height:${sPct}%;"></div>` : ''}
-          </div>
-        `;
-      }).join('');
 
       return `
         <div class="card-activity-wrap">
@@ -4662,9 +4929,7 @@ body {
               <strong>${totalReqs}</strong> reqs &middot; <span style="color:${totalReqs === 0 || rate >= 90 ? 'var(--meter-text-green)' : rate >= 50 ? 'var(--meter-text-warning)' : 'var(--meter-text-critical)'};">${rate}% ok</span>
             </span>
           </div>
-          <div class="activity-bar">
-            ${colsHtml}
-          </div>
+          ${renderActivityBar(file)}
         </div>
       `;
     } catch (e) {
@@ -4697,8 +4962,12 @@ body {
       });
     }
 
-    if (currentSort === 'prefix-asc') {
+    if (currentSort === 'prefix-asc' || currentSort === 'fav-first') {
       return [...list].sort((a, b) => {
+        if (currentSort === 'fav-first') {
+          const favoriteOrder = Number(favorites.includes(b.name)) - Number(favorites.includes(a.name));
+          if (favoriteOrder) return favoriteOrder;
+        }
         const pA = (a.prefix || '').trim();
         const pB = (b.prefix || '').trim();
         const hasA = pA.length > 0;
@@ -4897,11 +5166,17 @@ body {
   }
 
   function render() {
+    grid.classList.toggle('layout-compact', currentLayout === 'compact');
+    grid.classList.toggle('layout-list', currentLayout === 'list');
+    btnListColumns.style.display = currentLayout === 'list' ? '' : 'none';
+    btnListColumns.setAttribute('aria-pressed', String(listTwoColumns));
+    btnListColumns.classList.toggle('active', listTwoColumns);
     const filtered = authFiles.filter(f => {
       if (f.disabled) return false;
-      if (currentTab === 'all') return true;
-      const p = resolveProvider(f);
-      return p === currentTab;
+      if (currentTab !== 'all' && resolveProvider(f) !== currentTab) return false;
+      return (!lowQuotaOnly || isLowQuotaAccount(quotaStore[f.name]))
+        && (!favoritesOnly || favorites.includes(f.name))
+        && matchesAccountSearch(f, accountSearch.value);
     });
 
     const sorted = sortFiles(filtered);
@@ -4911,13 +5186,28 @@ body {
       return;
     }
 
-    grid.innerHTML = sorted.map(file => renderCard(file)).join('');
+    function renderListTable(rows) {
+      return `<div class="account-table-scroll"><table class="account-table" aria-label="Accounts"><thead><tr>
+          <th scope="col">Account</th><th scope="col">Activity</th><th scope="col">5h</th>
+          <th scope="col">Weekly</th><th scope="col">Plan</th><th scope="col">Actions</th>
+        </tr></thead><tbody>${rows.map(renderListRow).join('')}</tbody></table></div>`;
+    }
+
+    if (currentLayout === 'list') {
+      const midpoint = Math.ceil(sorted.length / 2);
+      grid.innerHTML = listTwoColumns
+        ? `<div class="list-columns">${renderListTable(sorted.slice(0, midpoint))}${renderListTable(sorted.slice(midpoint))}</div>`
+        : renderListTable(sorted);
+    } else {
+      grid.innerHTML = sorted.map(file => renderCard(file)).join('');
+    }
 
     sorted.forEach(file => {
       const btn = document.getElementById(`btn-ref-${file.name}`);
-      if (btn) {
-        btn.addEventListener('click', () => fetchFileQuota(file, true));
-      }
+      const compactBtn = document.getElementById(`btn-ref-compact-${file.name}`);
+      [btn, compactBtn].forEach(button => {
+        if (button) button.addEventListener('click', () => fetchFileQuota(file, true));
+      });
 
       const switchInput = document.getElementById(`toggle-status-${file.name}`);
       if (switchInput) {
@@ -4926,6 +5216,15 @@ body {
           toggleFileStatus(file, !isEnabled, switchInput);
         });
       }
+    });
+
+    grid.querySelectorAll('.btn-favorite').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.filename;
+        favorites = favorites.includes(name) ? favorites.filter(value => value !== name) : [...favorites, name];
+        saveUiPrefs({ favorites });
+        render();
+      });
     });
 
     grid.querySelectorAll('.btn-edit-prefix').forEach(btn => {
@@ -4945,6 +5244,70 @@ body {
         if (target) consumeCodexResetCredit(target);
       });
     });
+  }
+
+  function renderListQuota(quota, kind) {
+    const percent = lowestPercentOfKind(quota, kind);
+    if (percent === null) return '<td class="list-quota">—</td>';
+    const fillClass = percent < 10 ? 'critical' : percent < 30 ? 'warning' : '';
+    return `<td class="list-quota" title="${escapeHtml(quotaKindDetail(quota, kind))}">
+      <span class="${percent < lowQuotaThreshold ? 'meta-reset-soon' : ''}">${escapeHtml(`${percent}%`)}</span>
+      <div class="track"><div class="fill ${fillClass}" style="width: ${Math.max(0, Math.min(100, percent))}%"></div></div>
+    </td>`;
+  }
+
+  function accountPlanLabel(file, provider, quota) {
+    return !isLiveQuotaProvider(provider)
+      ? (file.plan || 'Standard Account')
+      : (provider === 'antigravity'
+          ? getAntigravityPlanLabel(quota.subscription)
+          : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null));
+  }
+
+  function renderCreditBadges(fileName, provider, quota, compactInfo = []) {
+    const resetCreditsCount = quota.resetCredits?.availableCount;
+    if (typeof resetCreditsCount === 'number') compactInfo.push(`Reset credits: ${resetCreditsCount}`);
+    const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
+      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
+      : '';
+    let creditsBadge = '';
+    if ((provider === 'codex' || provider === 'unknown') && quota.credits) {
+      if (quota.credits.unlimited) {
+        compactInfo.push('Credits: Unlimited');
+        creditsBadge = `<span class="plan-badge codex-credits-badge" title="Unlimited credits">♾️<span class="credit-words"> Unlimited</span></span>`;
+      } else if (quota.credits.balance !== null) {
+        compactInfo.push(`Credits: ${quota.credits.balance}`);
+        creditsBadge = `<span class="plan-badge codex-credits-badge" title="Account credit balance">🪙 ${escapeHtml(quota.credits.balance)}</span>`;
+      }
+    }
+    return {
+      resetCreditsBadge,
+      creditsBadge,
+      resetCreditsPlaceholder: resetCreditsBadge ? '' : '<span class="plan-badge credit-placeholder" title="No reset credits">⚡ —</span>',
+      creditsPlaceholder: creditsBadge ? '' : '<span class="plan-badge credit-placeholder" title="No credits">🪙 —</span>',
+    };
+  }
+
+  function renderListRow(file) {
+    const provider = resolveProvider(file);
+    const live = isLiveQuotaProvider(provider);
+    const quota = quotaStore[file.name] || { plan: live ? 'Pro' : 'Standard', groups: [] };
+    const identity = deriveIdentity(file);
+    const planLabel = accountPlanLabel(file, provider, quota);
+    const name = escapeHtml(file.name);
+    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(file.name, provider, quota);
+    return `<tr>
+      <td><span class="file-name" title="${escapeHtml(displayIdentity(identity.fullName))}">${escapeHtml(displayIdentity(identity.primary))}</span>
+        <div class="prefix-row"><span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(file.prefix || '—')}</span></div></td>
+      <td class="list-activity">${renderCardMiniActivity(file)}</td>
+      ${renderListQuota(quota, 'fiveHour')}${renderListQuota(quota, 'weekly')}
+      <td><span class="list-plan-name" title="${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}">${escapeHtml(provider)}${planLabel ? ` · ${escapeHtml(planLabel)}` : ''}</span>
+        <div class="list-credits">${resetCreditsBadge || resetCreditsPlaceholder}${creditsBadge || creditsPlaceholder}</div></td>
+      <td><div class="list-actions">
+        <button id="btn-ref-${name}" class="btn-card-refresh btn-icon" ${!live ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="${quota.loading ? 'spinning' : ''}">🔄</span></button>
+        <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${name}" aria-pressed="${favorites.includes(file.name)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(file.name) ? '★' : '☆'}</button>
+      </div></td>
+    </tr>`;
   }
 
   function renderCard(file) {
@@ -5011,7 +5374,7 @@ body {
                 <span class="meter-label">${escapeHtml(row.label)}</span>
                 <span class="meter-meta">
                   <span class="meta-percent">${escapeHtml(row.percentLabel)}</span>
-                  <span class="meta-reset ${row.warning ? 'meta-reset-soon' : ''}">${escapeHtml(row.resetLabel)}</span>
+                  <span class="meta-reset ${isLowQuota(row) ? 'meta-reset-soon' : ''}">${escapeHtml(row.resetLabel)}</span>
                 </span>
               </div>
               <div class="track">
@@ -5034,31 +5397,19 @@ body {
       `;
     }
 
-    const planLabel = !isLiveQuota
-      ? (file.plan || 'Standard Account')
-      : (provider === 'antigravity'
-          ? getAntigravityPlanLabel(quota.subscription)
-          : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null));
+    const planLabel = accountPlanLabel(file, provider, quota);
 
-    const resetCreditsCount = quota.resetCredits?.availableCount;
-    const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
-      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount} reset credit${resetCreditsCount > 1 ? 's' : ''}</button>`
-      : '';
+    const compactInfo = [];
+    if (planLabel) compactInfo.push(`Plan: ${planLabel}`);
+    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(fileName, provider, quota, compactInfo);
 
     const isPayAsYouGo = quota.isPayAsYouGo || (provider === 'xai' && quota.plan === 'Paid');
     const xaiWarnBadge = isPayAsYouGo
       ? `<span class="xai-token-warn-badge" title="La actualización de cuota consume tokens">⚠️ Consume tokens</span>`
       : '';
 
-    let codexBadges = '';
+    let codexBadges = creditsBadge;
     if (provider === 'codex' || provider === 'unknown') {
-      if (quota.credits) {
-        if (quota.credits.unlimited) {
-          codexBadges += `<span class="plan-badge codex-credits-badge" title="Unlimited credits">♾️ Unlimited</span>`;
-        } else if (quota.credits.balance !== null) {
-          codexBadges += `<span class="plan-badge codex-credits-badge" title="Account credit balance">🪙 ${escapeHtml(quota.credits.balance)}</span>`;
-        }
-      }
       if (quota.subscriptionActiveUntil) {
         const activeMs = typeof quota.subscriptionActiveUntil === 'number'
           ? (quota.subscriptionActiveUntil < 1e11 ? quota.subscriptionActiveUntil * 1000 : quota.subscriptionActiveUntil)
@@ -5066,6 +5417,7 @@ body {
         if (activeMs && !isNaN(activeMs)) {
           const d = new Date(activeMs);
           const dateStr = d.toLocaleDateString();
+          compactInfo.push(`Exp: ${dateStr}`);
           codexBadges += `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">Exp: ${escapeHtml(dateStr)}</span>`;
         }
       }
@@ -5073,23 +5425,26 @@ body {
 
     const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
           <div class="plan-row">
-            <span>${planLabel ? 'Plan' : 'Credits'}</span>
+            <span class="plan-label">${planLabel ? 'Plan' : 'Credits'}</span>
             <div class="plan-badges">
-              ${planLabel ? `<span class="plan-badge">${escapeHtml(planLabel)}</span>` : ''}
-              ${resetCreditsBadge}
+              ${planLabel ? `<span class="plan-badge plan-type">${escapeHtml(planLabel)}</span>` : ''}
+              ${resetCreditsBadge || resetCreditsPlaceholder}
               ${codexBadges}
+              ${creditsPlaceholder}
               ${xaiWarnBadge}
             </div>
-          </div>` : '';
+            <div class="compact-activity">${renderActivityBar(file)}</div>
+          </div>` : `<div class="plan-row"><div class="plan-badges">${resetCreditsPlaceholder}${creditsPlaceholder}</div><div class="compact-activity">${renderActivityBar(file)}</div></div>`;
 
     const idInfo = deriveIdentity(file);
 
     return `
-      <article class="card">
+      <article class="card" title="${escapeHtml(compactInfo.join(' · '))}">
         <header class="card-head">
           <div class="provider-icon-box" style="color: ${iconColor};">
             ${iconChar}
           </div>
+          ${prefix ? `<span class="compact-prefix prefix-text" title="${escapeHtml(prefix)}">${escapeHtml(prefix)}</span>` : ''}
           <div class="card-title-col">
             <span class="file-name" title="${escapeHtml(displayIdentity(idInfo.fullName))}">${escapeHtml(displayIdentity(idInfo.primary))}</span>
             <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
@@ -5097,6 +5452,8 @@ body {
               ${editBtn}
             </div>
           </div>
+          <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="${quota.loading ? 'spinning' : ''}">🔄</span></button>
+          <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
         </header>
 
         <div class="card-body">
