@@ -2264,15 +2264,20 @@ body {
   }
 
   function lowestPercentOfKind(quota, kind) {
-    let lowest = null;
-    for (const group of quota?.groups || []) {
+    const groups = quota?.groups || [];
+    // Antigravity preserves upstream order, so prefer its Gemini group explicitly.
+    const gemini = groups.find(group => /^gemini models$/i.test(group.title || group.name || ''));
+    const orderedGroups = gemini ? [gemini, ...groups.filter(group => group !== gemini)] : groups;
+    for (const group of orderedGroups) {
+      let lowest = null;
       for (const row of group.rows || []) {
         if (row[kind] === true && Number.isFinite(row.percent)) {
           lowest = lowest === null ? row.percent : Math.min(lowest, row.percent);
         }
       }
+      if (lowest !== null) return lowest;
     }
-    return lowest;
+    return null;
   }
 
   function isLowQuotaAccount(quota) {

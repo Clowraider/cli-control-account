@@ -47,6 +47,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     lowestPercentOfKind,
     quotaKindDetail,
     renderListRow,
+    renderListQuota,
     renderCreditBadges,
     isLowQuotaAccount,
     fetchCodexQuota,
@@ -205,12 +206,12 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
   return context.__dashboardTest;
 }
 
-test('weekly minimum spans groups and ignores non-weekly or non-finite data', () => {
+test('weekly minimum uses the first eligible group and ignores non-weekly or non-finite data', () => {
   const dashboard = loadDashboard();
   assert.equal(dashboard.lowestWeeklyPercent({ groups: [
     { rows: [{ weekly: true, percent: 35 }, { percent: 0 }] },
     { rows: [{ weekly: true, percent: 15 }, { weekly: true, percent: null }, { weekly: true, percent: Infinity }] },
-  ] }), 15);
+  ] }), 35);
   for (const quota of [undefined, {}, { groups: [{ rows: [{ percent: 0 }] }] },
     { groups: [{ rows: [{ weekly: true, percent: null }, { weekly: true }] }] }]) {
     assert.equal(dashboard.lowestWeeklyPercent(quota), null);
@@ -218,20 +219,47 @@ test('weekly minimum spans groups and ignores non-weekly or non-finite data', ()
   }
 });
 
-test('list window minima and hover details span groups and ignore unrelated data', () => {
+test('list window minima use Gemini while hover details span groups', () => {
   const dashboard = loadDashboard();
   const quota = { groups: [
     { title: 'Gemini Models', rows: [{ fiveHour: true, percent: 97 }, { weekly: true, percent: 80 }, { percent: 0 }] },
     { name: 'Claude and GPT Models', rows: [{ fiveHour: true, percent: 43 }, { weekly: true, percent: 25 }, { fiveHour: true, percent: null }] },
   ] };
-  assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 43);
-  assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 25);
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 97);
+  assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 80);
   assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97% · Claude and GPT Models: 43%');
   for (const empty of [null, {}, { groups: [{ rows: [{ percent: 0 }, { fiveHour: true, percent: null }, { fiveHour: true, percent: Infinity }] }] }]) {
     assert.equal(dashboard.lowestPercentOfKind(empty, 'fiveHour'), null);
     assert.equal(dashboard.lowestPercentOfKind(empty, 'weekly'), null);
     assert.equal(dashboard.quotaKindDetail(empty, 'fiveHour'), '');
   }
+});
+
+test('list quota and low quota filtering prefer Gemini even when upstream order differs', () => {
+  const dashboard = loadDashboard();
+  const gemini = { title: 'GEMINI MODELS', rows: [{ weekly: true, percent: 97 }, { fiveHour: true, percent: 90 }] };
+  const claude = { title: 'CLAUDE AND GPT MODELS', rows: [{ weekly: true, percent: 43 }, { fiveHour: true, percent: 10 }] };
+  for (const groups of [[gemini, claude], [claude, gemini]]) {
+    const quota = { groups };
+    assert.match(dashboard.renderListQuota(quota, 'weekly'), />97%<\/span>/);
+    assert.match(dashboard.renderListQuota(quota, 'weekly'), /CLAUDE AND GPT MODELS: 43%/);
+    assert.match(dashboard.renderListQuota(quota, 'fiveHour'), />90%<\/span>/);
+    assert.equal(dashboard.isLowQuotaAccount(quota), false);
+  }
+  claude.rows[0].percent = 10;
+  assert.equal(dashboard.isLowQuotaAccount({ groups: [gemini, claude] }), false);
+});
+
+test('primary group falls back per kind and takes its own minimum only', () => {
+  const dashboard = loadDashboard();
+  const first = { rows: [{ fiveHour: true, percent: 80 }, { fiveHour: true, percent: 70 }, { weekly: true, percent: Infinity }] };
+  const second = { rows: [{ weekly: true, percent: 60 }, { weekly: true, percent: 50 }, { fiveHour: true, percent: 5 }] };
+  for (const groups of [[first], [first, second]]) {
+    assert.equal(dashboard.lowestPercentOfKind({ groups }, 'fiveHour'), 70);
+    assert.match(dashboard.renderListQuota({ groups }, 'fiveHour'), />70%<\/span>/);
+  }
+  assert.equal(dashboard.lowestWeeklyPercent({ groups: [first, second] }), 50);
+  assert.equal(dashboard.lowestWeeklyPercent({ groups: [{ title: 'Gemini models', rows: [{ weekly: true, percent: null }] }, second] }), 50);
 });
 
 test('list rows reuse actions and mask and escape account text', () => {
