@@ -20,6 +20,55 @@ test('credit badges share real balances and missing placeholders', () => {
   assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
 });
 
+test('quota display preference defaults, validates, and persists used mode', () => {
+  assert.equal(loadDashboard().loadUiPrefs().quotaDisplay, 'remaining');
+  for (const quotaDisplay of ['invalid', true, null]) {
+    const dashboard = loadDashboard(undefined, undefined, {
+      initialStorage: { 'cca-ui-prefs': JSON.stringify({ quotaDisplay }) },
+    });
+    assert.equal(dashboard.loadUiPrefs().quotaDisplay, 'remaining');
+  }
+  const dashboard = loadDashboard();
+  dashboard.setQuotaDisplay('used');
+  assert.equal(dashboard.loadUiPrefs().quotaDisplay, 'used');
+  assert.equal(JSON.parse(dashboard.storageData.get('cca-ui-prefs')).quotaDisplay, 'used');
+  const button = dashboard.getElement('btn-quota-display');
+  assert.equal(button.textContent, 'Used');
+  assert.equal(button.attributes['aria-pressed'], 'true');
+  assert.equal(button.title, 'Show remaining quota');
+});
+
+test('quota display changes presentation only across list and shared grid/compact cards', () => {
+  const dashboard = loadDashboard();
+  const row = { label: 'Weekly', weekly: true, percent: 8, percentLabel: '8% remaining', resetLabel: 'Soon' };
+  const quota = { groups: [{ title: 'Models', rows: [row] }] };
+  const file = { name: 'quota.json', type: 'codex' };
+  dashboard.quotaStore[file.name] = quota;
+  const remainingList = dashboard.renderListQuota(quota, 'weekly');
+  const remainingCard = dashboard.renderCard(file);
+  assert.match(remainingList, />8%<\/span>/);
+  assert.match(remainingCard, /8% remaining/);
+  dashboard.setQuotaDisplay('used');
+  const usedList = dashboard.renderListQuota(quota, 'weekly');
+  assert.match(usedList, />92%<\/span>/);
+  assert.match(usedList, /fill critical.*width: 92%/);
+  assert.match(usedList, /meta-reset-soon/);
+  assert.match(usedList, /Models: 92%/);
+  assert.match(dashboard.renderCard(file), /92% used/);
+  assert.match(dashboard.renderCard(file), /fill critical.*width: 92%/);
+  assert.equal(row.percent, 8);
+  assert.equal(dashboard.isLowQuotaAccount(quota), true);
+  assert.equal(dashboard.renderListQuota({}, 'weekly'), '<td class="list-quota">—</td>');
+  for (const [percent, percentLabel] of [[100, 'Quota available'], [null, '—'], [undefined, 'Unavailable']]) {
+    Object.assign(row, { percent, percentLabel });
+    assert.ok(dashboard.renderCard(file).includes(percentLabel));
+  }
+  Object.assign(row, { percent: 8, percentLabel: '8% remaining' });
+  dashboard.setQuotaDisplay('remaining');
+  assert.equal(dashboard.renderListQuota(quota, 'weekly'), remainingList);
+  assert.equal(dashboard.renderCard(file), remainingCard);
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -48,6 +97,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     quotaKindDetail,
     renderListRow,
     renderListQuota,
+    setQuotaDisplay: (value) => setQuotaDisplay(value),
     renderCreditBadges,
     isLowQuotaAccount,
     fetchCodexQuota,
@@ -354,14 +404,14 @@ test('list two-column preference accepts only true and round-trips', () => {
 
 test('UI preferences default on empty storage', () => {
   const dashboard = loadDashboard();
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences restore valid stored values', () => {
   const dashboard = loadDashboard(undefined, undefined, {
     initialStorage: { 'cca-ui-prefs': JSON.stringify({ v: 1, tab: 'codex', sort: 'soonest' }) },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'codex', sort: 'soonest', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('UI preferences reject invalid values and malformed JSON', () => {
@@ -373,7 +423,7 @@ test('UI preferences reject invalid values and malformed JSON', () => {
     const dashboard = loadDashboard(undefined, undefined, {
       initialStorage: { 'cca-ui-prefs': value },
     });
-    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+    assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
   }
 });
 
@@ -471,7 +521,7 @@ test('saving UI preferences does not throw when storage write fails', () => {
 test('loading UI preferences does not throw when storage read fails', () => {
   const dashboard = loadDashboard(undefined, undefined, { throwOnGet: true });
   assert.doesNotThrow(() => dashboard.loadUiPrefs());
-  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, lowQuotaThreshold: 20, favorites: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(dashboard.loadUiPrefs())), { tab: 'all', sort: 'prefix-asc', layout: 'grid', listTwoColumns: false, hideEmails: false, quotaDisplay: 'remaining', lowQuotaThreshold: 20, favorites: [] });
 });
 
 test('Scope 1: parseIdTokenPayload decodes JWT and objects', () => {
