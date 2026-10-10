@@ -813,6 +813,61 @@ test('xAI auto-refresh does not call chat/completions ping unattended and render
   assert.equal(chatCallsManual.length, 1, 'manual refresh should trigger verification ping when billing fails');
 });
 
+test('Codex rate-limit windows are classified by duration with legacy order fallback', () => {
+  const dashboard = loadDashboard();
+  const window = (seconds, usedPercent) => ({ limit_window_seconds: seconds, used_percent: usedPercent });
+
+  const weeklyOnly = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window(604800, 25) },
+  });
+  assert.deepEqual([...weeklyOnly].map(row => row.label), ['Weekly Limit']);
+  assert.equal(weeklyOnly[0].percent, 75);
+
+  const swapped = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: window(604800, 30),
+      secondary_window: window(18000, 10),
+    },
+  });
+  assert.deepEqual([...swapped].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(swapped[0].percent, 90);
+  assert.equal(swapped[1].percent, 70);
+
+  const normal = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: window(18000, 15),
+      secondary_window: window(604800, 40),
+    },
+  });
+  assert.deepEqual([...normal].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(normal[0].percent, 85);
+  assert.equal(normal[1].percent, 60);
+
+  const legacy = dashboard.buildCodexQuotaRows({
+    rate_limit: {
+      primary_window: { used_percent: 20 },
+      secondary_window: { used_percent: 35 },
+    },
+  });
+  assert.deepEqual([...legacy].map(row => row.label), ['Five Hour Limit', 'Weekly Limit']);
+  assert.equal(legacy[0].percent, 80);
+  assert.equal(legacy[1].percent, 65);
+
+  const stringSeconds = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window('604800', 45) },
+  });
+  assert.deepEqual([...stringSeconds].map(row => row.label), ['Weekly Limit']);
+  assert.equal(stringSeconds[0].percent, 55);
+
+  const monthly = dashboard.buildCodexQuotaRows({
+    rate_limit: { primary_window: window(30 * 24 * 60 * 60, 50) },
+  });
+  assert.deepEqual([...monthly].map(row => row.label), ['Monthly Limit']);
+
+  const limitOnly = dashboard.buildCodexQuotaRows({ rate_limit: { limit_reached: true } });
+  assert.equal(limitOnly.length, 2);
+});
+
 test('Codex quota row precedence matches CPAMC: usedPercent takes precedence over limit_reached/allowed flags', () => {
   const dashboard = loadDashboard();
 
