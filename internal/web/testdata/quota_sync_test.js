@@ -331,6 +331,23 @@ test('credit badges share real balances and missing placeholders', () => {
   assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
 });
 
+test('List tables share fixed column widths so two-column tables fit and stay aligned', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const px = (re) => Number(html.match(re)?.[1]);
+  assert.match(html, /\.account-table\s*\{[^}]*table-layout:\s*fixed;/);
+  assert.match(html, /<colgroup><col class="col-account"><col class="col-activity"><col class="col-quota"><col class="col-quota"><col class="col-plan"><col class="col-actions"><\/colgroup>/);
+  const account = px(/\.col-account\s*\{\s*width:\s*(\d+)px/);
+  const accountShown = px(/\.emails-shown \.col-account\s*\{\s*width:\s*(\d+)px/);
+  const quota = px(/\.col-quota\s*\{\s*width:\s*(\d+)px/);
+  const plan = px(/@container \(max-width: 760px\)\s*\{[^@]*?\.col-plan\s*\{\s*width:\s*(\d+)px/);
+  const actions = px(/\.col-actions\s*\{\s*width:\s*(\d+)px/);
+  const fixed = account + 2 * quota + plan + actions;
+  // Two columns only while Activity keeps at least 120px; wider Account when emails are shown.
+  assert.equal(px(/\.list-columns\s*\{[^}]*--list-min:\s*(\d+)px/), fixed + 124);
+  assert.equal(px(/\.list-columns\.emails-shown\s*\{\s*--list-min:\s*(\d+)px/), fixed - account + accountShown + 124);
+  assert.match(html, /minmax\(min\(100%, var\(--list-min\)\), 1fr\)/);
+});
+
 test('maintenance starts hidden and uses the native accessible chevron pattern', () => {
   const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
   assert.match(html, /id="ego-maintenance-body" hidden/);
