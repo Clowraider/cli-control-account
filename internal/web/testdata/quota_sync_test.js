@@ -465,6 +465,18 @@ test('quota refresh controls reuse an accessible currentColor SVG in every layou
   assert.match(dashboard.getElement('refresh-all-icon').innerHTML, /<svg[^>]*stroke="currentColor"/);
 });
 
+test('shared Grid/Compact card loading body uses the spinning refresh SVG', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'loading.json', type: 'codex' };
+  dashboard.quotaStore[file.name] = { loading: true };
+  const card = dashboard.renderCard(file);
+  const body = card.match(/<div[^>]*>\s*(<span[^>]*>[\s\S]*?<\/span>)\s*Loading live quota data\.\.\./);
+  assert.ok(body, 'card renders the loading body');
+  assert.doesNotMatch(card, /🔄/);
+  assert.match(body[1], /class="refresh-icon spinning"/);
+  assert.match(body[1], /<svg[^>]*stroke="currentColor"[^>]*aria-hidden="true"/);
+});
+
 test('Ego preferences default, validate, and persist independently', () => {
   const defaults = loadDashboard().loadUiPrefs();
   assert.equal(defaults.egoRange, '24h');
