@@ -477,6 +477,24 @@ test('shared Grid/Compact card loading body uses the spinning refresh SVG', () =
   assert.match(body[1], /<svg[^>]*stroke="currentColor"[^>]*aria-hidden="true"/);
 });
 
+test('Ego refresh icon spins until the last overlapping load finishes', async () => {
+  const responses = [];
+  const dashboard = loadDashboard(() => new Promise((resolve) => responses.push(resolve)));
+  dashboard.initEgoListeners();
+  const icon = dashboard.getElement('ego-refresh-icon');
+  assert.equal(icon.classList.contains('spinning'), false);
+  const first = dashboard.getElement('ego-btn-refresh').click();
+  assert.equal(icon.classList.contains('spinning'), true);
+  dashboard.setEgoRange('7d');
+  const second = dashboard.loadEgoOverview();
+  responses.slice(0, 6).forEach(resolve => resolve({ ok: true, json: async () => [] }));
+  await first;
+  assert.equal(icon.classList.contains('spinning'), true, 'still spinning while a newer load is pending');
+  responses.slice(6).forEach(resolve => resolve({ ok: true, json: async () => [] }));
+  await second;
+  assert.equal(icon.classList.contains('spinning'), false);
+});
+
 test('Ego preferences default, validate, and persist independently', () => {
   const defaults = loadDashboard().loadUiPrefs();
   assert.equal(defaults.egoRange, '24h');

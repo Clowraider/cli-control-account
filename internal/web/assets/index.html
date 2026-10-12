@@ -5775,8 +5775,10 @@ body {
 
     const version = ++egoLoadVersion;
     const refresh = document.getElementById('ego-btn-refresh');
+    const refreshIcon = document.getElementById('ego-refresh-icon');
     if (egoLoadsPending++ === 0) egoRefreshWasDisabled = refresh.disabled;
     refresh.disabled = true;
+    refreshIcon.classList.add('spinning');
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
         fetchEgoSection(`/stats?range=${currentEgoRange}&provider=all`),
@@ -5850,7 +5852,10 @@ body {
       console.error('Failed to load Ego analytics:', e);
       showToast('Failed to load Ego analytics', true);
     } finally {
-      if (--egoLoadsPending === 0) refresh.disabled = egoRefreshWasDisabled;
+      if (--egoLoadsPending === 0) {
+        refresh.disabled = egoRefreshWasDisabled;
+        refreshIcon.classList.remove('spinning');
+      }
     }
   }
 
