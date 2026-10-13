@@ -1193,6 +1193,7 @@ body {
 }
 
 .meter-label {
+  flex-basis: 100%;
   color: var(--text-secondary);
   font-weight: 500;
   flex-shrink: 0;
@@ -1200,15 +1201,18 @@ body {
 }
 
 .meter-meta {
+  width: 100%;
   font-family: var(--font-mono);
   font-size: 11px;
   display: flex;
+  justify-content: space-between;
   gap: 3px var(--gap-x);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
 .meta-percent {
+  flex-shrink: 0;
   font-weight: 650;
   color: var(--text-primary);
 }
@@ -2333,8 +2337,8 @@ body {
   }
 
   function displayPercentLabel(row) {
-    if (quotaDisplay === 'used' && Number.isFinite(row.percent) && /% remaining$/.test(row.percentLabel)) {
-      return `${displayPercent(row.percent)}% used`;
+    if (Number.isFinite(row.percent) && (/% remaining$/.test(row.percentLabel) || row.percentLabel === 'Quota available')) {
+      return `${displayPercent(row.percent)}% ${quotaDisplay}`;
     }
     return row.percentLabel;
   }
