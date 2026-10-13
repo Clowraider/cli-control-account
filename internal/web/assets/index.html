@@ -57,6 +57,8 @@ body {
   padding: 16px calc(2 * var(--gap-x));
 }
 
+body:has(#nav-btn-quota.active) { background-color: #151412; }
+
 .page {
   display: flex;
   flex-direction: column;
@@ -376,7 +378,7 @@ body {
 .account-table td { width: 1%; white-space: nowrap; }
 .account-table td.list-activity { width: auto; min-width: 120px; white-space: nowrap; }
 .list-activity .activity-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.account-table tbody tr:nth-child(even) { background: var(--bg-primary); }
+.account-table tbody tr:nth-child(even) { background-color: var(--bg-primary); }
 .account-table .prefix-row { margin-top: 3px; }
 .account-table .list-quota { min-width: 90px; }
 .account-table .track { margin-top: 4px; height: 4px; }
@@ -386,6 +388,20 @@ body {
 .list-credits > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
 
 /* Quota Card */
+:where(.card, .account-table tbody tr) { --provider-color: transparent; }
+[data-provider="antigravity"] { --provider-color: #0061ff; }
+[data-provider="claude"] { --provider-color: var(--brand-claude); }
+[data-provider="codex"] { --provider-color: var(--brand-codex); }
+[data-provider="kimi"] { --provider-color: var(--brand-kimi); }
+[data-provider="xai"] { --provider-color: var(--brand-xai); }
+[data-provider="gemini"] { --provider-color: #38bdf8; }
+[data-provider="vertex"] { --provider-color: #818cf8; }
+[data-provider="qwen"] { --provider-color: #34d399; }
+[data-provider="iflow"] { --provider-color: #ec4899; }
+.account-table tbody tr {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--provider-color) 6%, transparent), transparent 55%);
+}
+
 .card {
   position: relative;
   display: flex;
@@ -394,7 +410,7 @@ body {
   padding: 12px 14px;
   border-radius: var(--radius-card);
   border: 1px solid var(--border-color);
-  background: var(--bg-card);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--provider-color) 8%, transparent), transparent 260px), var(--bg-card);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -5508,7 +5524,7 @@ body {
     const planLabel = accountPlanLabel(file, provider, quota);
     const name = escapeHtml(file.name);
     const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(file.name, provider, quota);
-    return `<tr>
+    return `<tr data-provider="${escapeHtml(provider)}">
       <td><span class="file-name" title="${escapeHtml(displayIdentity(identity.fullName))}">${escapeHtml(displayIdentity(identity.primary))}</span>
         <div class="prefix-row"><span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(file.prefix || '—')}</span></div></td>
       <td class="list-activity">${renderCardMiniActivity(file)}</td>
@@ -5655,7 +5671,8 @@ body {
     ].join('\n');
 
     return `
-      <article class="card" title="${escapeHtml(cardSummary)}">
+      <article class="card" title="${escapeHtml(cardSummary)}"
+        data-provider="${escapeHtml(provider)}">
         <header class="card-head">
           <div class="provider-icon-box" style="color: ${iconColor};">
             ${iconChar}

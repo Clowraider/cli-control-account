@@ -1904,3 +1904,44 @@ test('native hover handles missing and expired dates without inventing renewal o
   dashboard.quotaStore[file.name].plan = '\"<script>';
   assert.match(dashboard.renderCard(file), /Plan: &quot;&lt;script&gt;/);
 });
+
+test('provider accents identify each account in cards and mixed-provider List rows without changing actions', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('rendering must not fetch'); });
+  for (const provider of ['antigravity', 'claude', 'codex', 'kimi', 'xai', 'gemini', 'vertex', 'qwen', 'iflow', 'unknown']) {
+    const file = { name: `${provider}.json`, provider };
+    const card = dashboard.renderCard(file), list = dashboard.renderListRow(file);
+    assert.match(card, new RegExp(`<article[^>]*data-provider="${provider}"`));
+    assert.match(list, new RegExp(`^<tr data-provider="${provider}"`));
+    assert.match(card, /btn-favorite/);
+    assert.match(list, /btn-favorite/);
+    assert.match(card, /aria-label="Refresh quota"/);
+    assert.match(list, /aria-label="Refresh quota"/);
+  }
+  assert.equal(requests, 0);
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.card\s*\{[^}]*linear-gradient\(135deg,[^;]*8%, transparent\), transparent 260px\)/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*6%, transparent\), transparent 55%/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*linear-gradient\(/);
+  assert.match(html, /:where\(\.card, \.account-table tbody tr\)\s*\{[^}]*--provider-color:\s*transparent/);
+  assert.match(html, /\[data-provider="antigravity"\]\s*\{\s*--provider-color:\s*#0061ff;/);
+  assert.match(html, /--brand-antigravity:\s*#3b82f6;/);
+  for (const provider of ['claude', 'codex', 'kimi', 'xai']) {
+    assert.match(html, new RegExp(`\\[data-provider="${provider}"\\] \\{ --provider-color: var\\(--brand-${provider}\\)`));
+  }
+  assert.match(html, /\.account-table tbody tr:nth-child\(even\)\s*\{\s*background-color:\s*var\(--bg-primary\)/);
+});
+
+test('Quota alone uses the requested canvas background while Ego keeps the base theme', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /body:has\(#nav-btn-quota\.active\)\s*\{\s*background-color:\s*#151412;/);
+  assert.match(html, /--bg-app:\s*#0d1117;/);
+  assert.match(html, /body\s*\{\s*background-color:\s*var\(--bg-app\);/);
+  const dashboard = loadDashboard();
+  for (let i = 0; i < 2; i++) {
+    dashboard.switchView('ego');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), false);
+    dashboard.switchView('quota');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), true);
+  }
+});

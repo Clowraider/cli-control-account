@@ -90,6 +90,7 @@ Access the dashboards in your browser:
 
 ### 1. Live Quota & Per-Account Activity Synchronization
 - **Upstream Providers**: Live quota querying for Google Antigravity, Anthropic Claude, OpenAI Codex, Kimi/Moonshot, and xAI (Grok).
+- **Provider Accents**: Subtle provider-colored gradients identify Grid/Compact cards and individual List rows. Quota uses a warm dark canvas (#151412); Ego retains its original background. Quota warning colors remain unchanged; unknown providers keep a neutral background.
 - **Per-Credential Activity Sparklines**: Activity bar (~3.3h window), total requests, and success rate (% ok) automatically refresh alongside live quota checks, keeping metrics consistent without full page reloads.
 - **Codex Reset Credits**: View and redeem available Codex reset credits directly from account cards.
 - **Prefix & Routing Management**: Live pencil edit modal for account prefixes with automatic `Prefix (A-Z)` sorting.
