@@ -94,6 +94,7 @@ Access the dashboards in your browser:
 - **Codex Reset Credits**: View and redeem available Codex reset credits directly from account cards.
 - **Prefix & Routing Management**: Live pencil edit modal for account prefixes with automatic `Prefix (A-Z)` sorting.
 - **Safety & Robustness**: Concurrency guards, 30s timeout handlers, fail-open defaults, and xAI token-burn protections during unattended auto-refresh.
+- **Account Information Hovers**: Hover over a card for its plan, subscription renewal, balance and reset count; hover over the reset button for individual expiry dates. Dates use the browser's timezone. The provider selects which credit is consumed.
 
 ### 2. Developer Ego Analytics & Token Valuation
 - **Token Accounting Semantics**:

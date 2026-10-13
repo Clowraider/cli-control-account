@@ -1846,3 +1846,61 @@ test('activity bar is reused in the full mini activity and escapes tooltips', ()
   assert.ok(dashboard.renderCardMiniActivity(file).includes(bar));
   assert.ok(!bar.includes('<unsafe>'));
 });
+
+test('native card summary distinguishes renewal from individual reset expiries', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('hover must not fetch'); });
+  const file = { name: 'hover.json', provider: 'codex' };
+  const renewal = new Date(Date.now() + 86400000 * 2 + 3600000).toISOString();
+  dashboard.quotaStore[file.name] = { plan: 'Plus', subscriptionActiveUntil: renewal,
+    credits: { balance: '0' }, resetCredits: { availableCount: 3, credits: [] } };
+  const before = JSON.stringify(dashboard.quotaStore[file.name]);
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /^Plan: Plus\nRenewal time:/);
+  assert.match(title, /\nCredit balance: 0\nManual resets: 3$/);
+  assert.match(title, /in 2d/);
+  assert.doesNotMatch(title, /Reset 1|Manual reset expiry/);
+  assert.equal(JSON.stringify(dashboard.quotaStore[file.name]), before);
+  assert.equal(requests, 0);
+});
+
+test('reset hover lists available credits in expiry order using browser-local date and offset', () => {
+  const dashboard = loadDashboard();
+  const date = days => new Date(Date.now() + days * 86400000 + 3600000).toISOString();
+  const earlier = date(9), later = date(16);
+  const credit = (expires_at, status = 'available') => ({ reset_type: 'codex_rate_limits', status, expires_at });
+  const quota = { resetCredits: dashboard.parseCodexResetCredits({ available_count: 3,
+    credits: [credit(later), credit(earlier), credit('bad-date'), credit(date(1), 'redeemed')] }) };
+  const before = JSON.stringify(quota);
+  const badge = dashboard.renderCreditBadges('hover.json', 'codex', quota).resetCreditsBadge;
+  const title = badge.match(/title="([^"]*)"/)[1];
+  const local = value => new Date(value).toLocaleString(undefined, {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset',
+  });
+  assert.match(title, /^Click to consume 1 reset credit and restore quota\nManual reset expiry \(/);
+  assert.ok(title.includes(Intl.DateTimeFormat().resolvedOptions().timeZone));
+  assert.ok(title.includes(`Reset 1: ${local(earlier)} · in 9d`));
+  assert.ok(title.includes(`Reset 2: ${local(later)} · in 16d`));
+  assert.match(title, /Reset 3: Expiry unavailable/);
+  assert.doesNotMatch(title, /Reset 4|bad-date|redeemed|earliest|nearest/);
+  assert.equal(JSON.stringify(quota), before, 'sorting must not mutate loaded credit data');
+});
+
+test('native hover handles missing and expired dates without inventing renewal or expiry', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'hover-missing.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { plan: 'Plus' };
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /Renewal time: Unavailable/);
+  assert.match(title, /Credit balance: —/);
+  assert.match(title, /Manual resets: —/);
+  const missing = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1 } }).resetCreditsBadge;
+  assert.match(missing, /Expiry details unavailable/);
+  const expired = new Date(Date.now() - 86400000).toISOString();
+  const badge = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1,
+    credits: [{ reset_type: 'codex_rate_limits', status: 'available', expires_at: expired }] } }).resetCreditsBadge;
+  assert.match(badge, /· expired/);
+  assert.doesNotMatch(badge, /in -/);
+  dashboard.quotaStore[file.name].plan = '\"<script>';
+  assert.match(dashboard.renderCard(file), /Plan: &quot;&lt;script&gt;/);
+});
