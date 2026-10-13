@@ -342,7 +342,7 @@ test('List tables share fixed column widths so two-column tables fit and stay al
   const plan = px(/@container \(max-width: 760px\)\s*\{[^@]*?\.col-plan\s*\{\s*width:\s*(\d+)px/);
   const actions = px(/\.col-actions\s*\{\s*width:\s*(\d+)px/);
   const fixed = account + 2 * quota + plan + actions;
-  // Two columns only while Activity keeps at least 120px; wider Account when emails are shown.
+  // Two columns only while Activity keeps at least 124px; wider Account when emails are shown.
   assert.equal(px(/\.list-columns\s*\{[^}]*--list-min:\s*(\d+)px/), fixed + 124);
   assert.equal(px(/\.list-columns\.emails-shown\s*\{\s*--list-min:\s*(\d+)px/), fixed - account + accountShown + 124);
   assert.match(html, /minmax\(min\(100%, var\(--list-min\)\), 1fr\)/);
