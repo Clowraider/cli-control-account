@@ -90,12 +90,14 @@ Access the dashboards in your browser:
 
 ### 1. Live Quota & Per-Account Activity Synchronization
 - **Upstream Providers**: Live quota querying for Google Antigravity, Anthropic Claude, OpenAI Codex, Kimi/Moonshot, and xAI (Grok).
+- **Provider Accents**: Subtle provider-colored gradients identify Grid/Compact cards and individual List rows. Quota uses a warm dark canvas (#151412); Ego retains its original background. Quota warning colors remain unchanged; unknown providers keep a neutral background.
 - **Per-Credential Activity Sparklines**: Activity bar (~3.3h window), total requests, and success rate (% ok) automatically refresh alongside live quota checks, keeping metrics consistent without full page reloads.
 - **Quota Display**: The Remaining / Used control changes displayed percentages and bars. Grid and Compact keep the same meter layout in either mode; warnings, filters and sorting remain based on remaining quota.
 - **Codex Reset Credits**: View and redeem available Codex reset credits directly from account cards.
 - **Prefix & Routing Management**: Live pencil edit modal for account prefixes with automatic `Prefix (A-Z)` sorting.
 - **Grid Cards**: Compact header with editable prefix, plan, credit balance and subscription expiry; reset credits, favorite and Refresh actions in the footer. Credential enable/disable is managed in the host management UI (CPAMC), not through a Grid toggle. Compact and List keep their existing presentation.
 - **Safety & Robustness**: Concurrency guards, 30s timeout handlers, fail-open defaults, and xAI token-burn protections during unattended auto-refresh.
+- **Account Information Hovers**: Hover over a card for its plan, subscription renewal, balance and reset count; hover over the reset button for individual expiry dates. Dates use the browser's timezone. The provider selects which credit is consumed.
 
 ### 2. Developer Ego Analytics & Token Valuation
 - **Token Accounting Semantics**:

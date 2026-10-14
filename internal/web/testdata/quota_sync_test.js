@@ -2022,3 +2022,102 @@ test('activity bar is reused in the full mini activity and escapes tooltips', ()
   assert.ok(dashboard.renderCardMiniActivity(file).includes(bar));
   assert.ok(!bar.includes('<unsafe>'));
 });
+
+test('native card summary distinguishes renewal from individual reset expiries', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('hover must not fetch'); });
+  const file = { name: 'hover.json', provider: 'codex' };
+  const renewal = new Date(Date.now() + 86400000 * 2 + 3600000).toISOString();
+  dashboard.quotaStore[file.name] = { plan: 'Plus', subscriptionActiveUntil: renewal,
+    credits: { balance: '0' }, resetCredits: { availableCount: 3, credits: [] } };
+  const before = JSON.stringify(dashboard.quotaStore[file.name]);
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /^Plan: Plus\nRenewal time:/);
+  assert.match(title, /\nCredit balance: 0\nManual resets: 3$/);
+  assert.match(title, /in 2d/);
+  assert.doesNotMatch(title, /Reset 1|Manual reset expiry/);
+  assert.equal(JSON.stringify(dashboard.quotaStore[file.name]), before);
+  assert.equal(requests, 0);
+});
+
+test('reset hover lists available credits in expiry order using browser-local date and offset', () => {
+  const dashboard = loadDashboard();
+  const date = days => new Date(Date.now() + days * 86400000 + 3600000).toISOString();
+  const earlier = date(9), later = date(16);
+  const credit = (expires_at, status = 'available') => ({ reset_type: 'codex_rate_limits', status, expires_at });
+  const quota = { resetCredits: dashboard.parseCodexResetCredits({ available_count: 3,
+    credits: [credit(later), credit(earlier), credit('bad-date'), credit(date(1), 'redeemed')] }) };
+  const before = JSON.stringify(quota);
+  const badge = dashboard.renderCreditBadges('hover.json', 'codex', quota).resetCreditsBadge;
+  const title = badge.match(/title="([^"]*)"/)[1];
+  const local = value => new Date(value).toLocaleString(undefined, {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset',
+  });
+  assert.match(title, /^Click to consume 1 reset credit and restore quota\nManual reset expiry \(/);
+  assert.ok(title.includes(Intl.DateTimeFormat().resolvedOptions().timeZone));
+  assert.ok(title.includes(`Reset 1: ${local(earlier)} · in 9d`));
+  assert.ok(title.includes(`Reset 2: ${local(later)} · in 16d`));
+  assert.match(title, /Reset 3: Expiry unavailable/);
+  assert.doesNotMatch(title, /Reset 4|bad-date|redeemed|earliest|nearest/);
+  assert.equal(JSON.stringify(quota), before, 'sorting must not mutate loaded credit data');
+});
+
+test('native hover handles missing and expired dates without inventing renewal or expiry', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'hover-missing.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { plan: 'Plus' };
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /Renewal time: Unavailable/);
+  assert.match(title, /Credit balance: —/);
+  assert.match(title, /Manual resets: —/);
+  const missing = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1 } }).resetCreditsBadge;
+  assert.match(missing, /Expiry details unavailable/);
+  const expired = new Date(Date.now() - 86400000).toISOString();
+  const badge = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1,
+    credits: [{ reset_type: 'codex_rate_limits', status: 'available', expires_at: expired }] } }).resetCreditsBadge;
+  assert.match(badge, /· expired/);
+  assert.doesNotMatch(badge, /in -/);
+  dashboard.quotaStore[file.name].plan = '\"<script>';
+  assert.match(dashboard.renderCard(file), /Plan: &quot;&lt;script&gt;/);
+});
+
+test('provider accents identify each account in cards and mixed-provider List rows without changing actions', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('rendering must not fetch'); });
+  for (const provider of ['antigravity', 'claude', 'codex', 'kimi', 'xai', 'gemini', 'vertex', 'qwen', 'iflow', 'unknown']) {
+    const file = { name: `${provider}.json`, provider };
+    const card = dashboard.renderCard(file), list = dashboard.renderListRow(file);
+    assert.match(card, new RegExp(`<article[^>]*data-provider="${provider}"`));
+    assert.match(list, new RegExp(`^<tr data-provider="${provider}"`));
+    assert.match(card, /btn-favorite/);
+    assert.match(list, /btn-favorite/);
+    assert.match(card, /aria-label="Refresh quota"/);
+    assert.match(list, /aria-label="Refresh quota"/);
+  }
+  assert.equal(requests, 0);
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.card\s*\{[^}]*linear-gradient\(135deg,[^;]*8%, transparent\), transparent 260px\)/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*6%, transparent\), transparent 55%/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*linear-gradient\(/);
+  assert.match(html, /:where\(\.card, \.account-table tbody tr\)\s*\{[^}]*--provider-color:\s*transparent/);
+  assert.match(html, /\[data-provider="antigravity"\]\s*\{\s*--provider-color:\s*#0061ff;/);
+  assert.match(html, /--brand-antigravity:\s*#3b82f6;/);
+  for (const provider of ['claude', 'codex', 'kimi', 'xai']) {
+    assert.match(html, new RegExp(`\\[data-provider="${provider}"\\] \\{ --provider-color: var\\(--brand-${provider}\\)`));
+  }
+  assert.match(html, /\.account-table tbody tr:nth-child\(even\)\s*\{\s*background-color:\s*var\(--bg-primary\)/);
+});
+
+test('Quota alone uses the requested canvas background while Ego keeps the base theme', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /body:has\(#nav-btn-quota\.active\)\s*\{\s*background-color:\s*#151412;/);
+  assert.match(html, /--bg-app:\s*#0d1117;/);
+  assert.match(html, /body\s*\{\s*background-color:\s*var\(--bg-app\);/);
+  const dashboard = loadDashboard();
+  for (let i = 0; i < 2; i++) {
+    dashboard.switchView('ego');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), false);
+    dashboard.switchView('quota');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), true);
+  }
+});

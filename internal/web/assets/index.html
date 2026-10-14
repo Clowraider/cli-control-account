@@ -57,6 +57,8 @@ body {
   padding: 16px calc(2 * var(--gap-x));
 }
 
+body:has(#nav-btn-quota.active) { background-color: #151412; }
+
 .page {
   display: flex;
   flex-direction: column;
@@ -385,7 +387,7 @@ body {
 .account-table td { width: 1%; white-space: nowrap; }
 .account-table td.list-activity { width: auto; min-width: 120px; white-space: nowrap; }
 .list-activity .activity-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.account-table tbody tr:nth-child(even) { background: var(--bg-primary); }
+.account-table tbody tr:nth-child(even) { background-color: var(--bg-primary); }
 .account-table .prefix-row { margin-top: 3px; }
 .account-table .list-quota { min-width: 90px; }
 .account-table .track { margin-top: 4px; height: 4px; }
@@ -395,6 +397,20 @@ body {
 .list-credits > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
 
 /* Quota Card */
+:where(.card, .account-table tbody tr) { --provider-color: transparent; }
+[data-provider="antigravity"] { --provider-color: #0061ff; }
+[data-provider="claude"] { --provider-color: var(--brand-claude); }
+[data-provider="codex"] { --provider-color: var(--brand-codex); }
+[data-provider="kimi"] { --provider-color: var(--brand-kimi); }
+[data-provider="xai"] { --provider-color: var(--brand-xai); }
+[data-provider="gemini"] { --provider-color: #38bdf8; }
+[data-provider="vertex"] { --provider-color: #818cf8; }
+[data-provider="qwen"] { --provider-color: #34d399; }
+[data-provider="iflow"] { --provider-color: #ec4899; }
+.account-table tbody tr {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--provider-color) 6%, transparent), transparent 55%);
+}
+
 .card {
   position: relative;
   display: flex;
@@ -403,7 +419,7 @@ body {
   padding: 12px 14px;
   border-radius: var(--radius-card);
   border: 1px solid var(--border-color);
-  background: var(--bg-card);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--provider-color) 8%, transparent), transparent 260px), var(--bg-card);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -5457,6 +5473,18 @@ body {
     });
 
     grid.querySelectorAll('.btn-consume-credit').forEach(btn => {
+      const card = btn.closest('.card');
+      if (card) {
+        const summary = card.getAttribute('title');
+        const hideSummary = () => card.removeAttribute('title');
+        const restoreSummary = () => {
+          if (!btn.matches(':hover, :focus')) card.setAttribute('title', summary);
+        };
+        btn.addEventListener('mouseenter', hideSummary);
+        btn.addEventListener('mouseleave', restoreSummary);
+        btn.addEventListener('focus', hideSummary);
+        btn.addEventListener('blur', restoreSummary);
+      }
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const fName = btn.dataset.filename;
@@ -5486,19 +5514,39 @@ body {
           : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null));
   }
 
-  function renderCreditBadges(fileName, provider, quota, compactInfo = []) {
+  function formatAccountHoverDate(value, kind) {
+    const ms = typeof value === 'number' ? (value < 1e11 ? value * 1000 : value) : Date.parse(value);
+    if (!Number.isFinite(ms)) return 'Unavailable';
+    const absolute = new Date(ms).toLocaleString(undefined, {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset',
+    });
+    const duration = formatDuration(new Date(ms).toISOString());
+    return `${absolute} · ${duration ? `in ${duration}` : kind === 'reset' ? 'expired' : 'passed'}`;
+  }
+
+  function renderCreditBadges(fileName, provider, quota) {
     const resetCreditsCount = quota.resetCredits?.availableCount;
-    if (typeof resetCreditsCount === 'number') compactInfo.push(`Reset credits: ${resetCreditsCount}`);
+    let resetTitle = 'Click to consume 1 reset credit and restore quota';
+    if (typeof resetCreditsCount === 'number' && resetCreditsCount > 0) {
+      const credits = [...(quota.resetCredits?.credits || [])].sort((a, b) => {
+        const aMs = Date.parse(a.expires_at), bMs = Date.parse(b.expires_at);
+        return (Number.isFinite(aMs) ? aMs : Infinity) - (Number.isFinite(bMs) ? bMs : Infinity);
+      });
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      resetTitle += `\nManual reset expiry (${zone})`;
+      resetTitle += credits.length ? credits.map((credit, i) => {
+        const expiry = formatAccountHoverDate(credit.expires_at, 'reset');
+        return `\nReset ${i + 1}: ${expiry === 'Unavailable' ? 'Expiry unavailable' : expiry}`;
+      }).join('') : '\nExpiry details unavailable';
+    }
     const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
-      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" ${pendingCredits.has(fileName) ? 'disabled' : ''} data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
+      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" ${pendingCredits.has(fileName) ? 'disabled' : ''} data-filename="${escapeHtml(fileName)}" title="${escapeHtml(resetTitle)}">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
       : '';
     let creditsBadge = '';
     if ((provider === 'codex' || provider === 'unknown') && quota.credits) {
       if (quota.credits.unlimited) {
-        compactInfo.push('Credits: Unlimited');
         creditsBadge = `<span class="plan-badge codex-credits-badge" title="Unlimited credits">♾️<span class="credit-words"> Unlimited</span></span>`;
       } else if (quota.credits.balance !== null) {
-        compactInfo.push(`Credits: ${quota.credits.balance}`);
         creditsBadge = `<span class="plan-badge codex-credits-badge" title="Account credit balance">🪙 ${escapeHtml(quota.credits.balance)}</span>`;
       }
     }
@@ -5518,7 +5566,7 @@ body {
     const planLabel = accountPlanLabel(file, provider, quota);
     const name = escapeHtml(file.name);
     const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(file.name, provider, quota);
-    return `<tr>
+    return `<tr data-provider="${escapeHtml(provider)}">
       <td><span class="file-name" title="${escapeHtml(displayIdentity(identity.fullName))}">${escapeHtml(displayIdentity(identity.primary))}</span>
         <div class="prefix-row"><span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(file.prefix || '—')}</span></div></td>
       <td class="list-activity">${renderCardMiniActivity(file)}</td>
@@ -5627,9 +5675,7 @@ body {
 
     const planLabel = accountPlanLabel(file, provider, quota);
 
-    const compactInfo = [];
-    if (planLabel) compactInfo.push(`Plan: ${planLabel}`);
-    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(fileName, provider, quota, compactInfo);
+    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(fileName, provider, quota);
 
     const isPayAsYouGo = quota.isPayAsYouGo || (provider === 'xai' && quota.plan === 'Paid');
     const xaiWarnBadge = isPayAsYouGo
@@ -5646,7 +5692,6 @@ body {
         if (activeMs && !isNaN(activeMs)) {
           const d = new Date(activeMs);
           const dateStr = d.toLocaleDateString();
-          compactInfo.push(`Exp: ${dateStr}`);
           codexBadges += `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">Exp: ${escapeHtml(dateStr)}</span>`;
           expiryBadge = `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">${escapeHtml(dateStr)}</span>`;
         }
@@ -5688,9 +5733,17 @@ body {
     }
 
     const idInfo = deriveIdentity(file);
+    const balance = quota.credits?.unlimited ? 'Unlimited' : quota.credits?.balance ?? '—';
+    const cardSummary = [
+      `Plan: ${planLabel || '—'}`,
+      `Renewal time: ${formatAccountHoverDate(quota.subscriptionActiveUntil, 'renewal')}`,
+      `Credit balance: ${balance}`,
+      `Manual resets: ${quota.resetCredits?.availableCount ?? '—'}`,
+    ].join('\n');
 
     return `
-      <article class="card" title="${escapeHtml(compactInfo.join(' · '))}">
+      <article class="card" title="${escapeHtml(cardSummary)}"
+        data-provider="${escapeHtml(provider)}">
         <header class="card-head">
           <div class="provider-icon-box" style="color: ${iconColor};">
             ${iconChar}
