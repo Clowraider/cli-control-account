@@ -5530,7 +5530,7 @@ body {
     } else if (quota.loading) {
       bodyContent = `
         <div style="padding: 20px 0; text-align: center; color: var(--text-muted); font-size: 12px;">
-          <span class="spinning" style="display:inline-block; margin-right:5px;">🔄</span> Loading live quota data...
+          <span class="refresh-icon spinning" style="vertical-align:middle; margin-right:5px;">${REFRESH_ICON}</span> Loading live quota data...
         </div>
       `;
     } else if (quota.error) {
@@ -5775,8 +5775,10 @@ body {
 
     const version = ++egoLoadVersion;
     const refresh = document.getElementById('ego-btn-refresh');
+    const refreshIcon = document.getElementById('ego-refresh-icon');
     if (egoLoadsPending++ === 0) egoRefreshWasDisabled = refresh.disabled;
     refresh.disabled = true;
+    refreshIcon.classList.add('spinning');
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
         fetchEgoSection(`/stats?range=${currentEgoRange}&provider=all`),
@@ -5850,7 +5852,10 @@ body {
       console.error('Failed to load Ego analytics:', e);
       showToast('Failed to load Ego analytics', true);
     } finally {
-      if (--egoLoadsPending === 0) refresh.disabled = egoRefreshWasDisabled;
+      if (--egoLoadsPending === 0) {
+        refresh.disabled = egoRefreshWasDisabled;
+        refreshIcon.classList.remove('spinning');
+      }
     }
   }
 
