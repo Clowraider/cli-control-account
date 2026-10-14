@@ -758,6 +758,34 @@ body {
   color: var(--text-primary);
 }
 
+.grid-metadata {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px var(--gap-x);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.grid-metadata-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px var(--gap-x);
+  min-width: 0;
+}
+.layout-grid .card-head { align-items: center; }
+.layout-grid .card-head .prefix-row { margin: 0 0 0 auto; max-width: 48%; min-width: 0; }
+.layout-grid .card-head .prefix-text { overflow: hidden; text-overflow: ellipsis; }
+.layout-grid .card-head .prefix-label { flex-shrink: 0; }
+.grid-metadata .plan-type { min-width: 0; }
+.grid-plan-credit { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.grid-metadata .grid-expiry { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.card-footer-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.grid-card-footer { flex-wrap: wrap; gap: 6px; }
+.grid-card-footer .card-footer-actions { margin-left: auto; }
+.grid-card-footer button { height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+.grid-metadata .codex-expiry-badge { font-weight: 400; }
+.grid-metadata .plan-badge { overflow-wrap: anywhere; }
+
 .plan-label { flex-shrink: 0; white-space: nowrap; }
 .plan-badges {
   display: inline-flex;
@@ -5353,6 +5381,7 @@ body {
   }
 
   function render() {
+    grid.classList.toggle('layout-grid', currentLayout === 'grid');
     grid.classList.toggle('layout-compact', currentLayout === 'compact');
     grid.classList.toggle('layout-list', currentLayout === 'list');
     btnListColumns.style.display = currentLayout === 'list' ? '' : 'none';
@@ -5513,6 +5542,12 @@ body {
     const editPencilSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
     const editBtn = `<button class="btn-edit-prefix" data-filename="${escapeHtml(fileName)}" data-prefix="${escapeHtml(prefix)}" title="${prefix ? 'Modificar perfil / prefijo' : 'Agregar perfil / prefijo'}" aria-label="Edit prefix">${editPencilSvg}</button>`;
 
+    const prefixRow = `<div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
+              ${prefixDisplay}
+              ${editBtn}
+            </div>`;
+    const favoriteButton = `<button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>`;
+
     const PROVIDER_METAS = {
       antigravity: { char: '▲', color: 'var(--brand-antigravity)' },
       claude: { char: '✳', color: 'var(--brand-claude)' },
@@ -5598,6 +5633,7 @@ body {
       : '';
 
     let codexBadges = creditsBadge;
+    let expiryBadge = '';
     if (provider === 'codex' || provider === 'unknown') {
       if (quota.subscriptionActiveUntil) {
         const activeMs = typeof quota.subscriptionActiveUntil === 'number'
@@ -5608,11 +5644,12 @@ body {
           const dateStr = d.toLocaleDateString();
           compactInfo.push(`Exp: ${dateStr}`);
           codexBadges += `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">Exp: ${escapeHtml(dateStr)}</span>`;
+          expiryBadge = `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">${escapeHtml(dateStr)}</span>`;
         }
       }
     }
 
-    const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
+    let planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
           <div class="plan-row">
             <span class="plan-label">${planLabel ? 'Plan' : 'Credits'}</span>
             <div class="plan-badges">
@@ -5625,6 +5662,27 @@ body {
             <div class="compact-activity">${renderActivityBar(file)}</div>
           </div>` : `<div class="plan-row"><div class="plan-badges">${resetCreditsPlaceholder}${creditsPlaceholder}</div><div class="compact-activity">${renderActivityBar(file)}</div></div>`;
 
+    const isGrid = currentLayout === 'grid';
+    let gridResetBadge = '';
+    if (isGrid) {
+      gridResetBadge = resetCreditsBadge.replace('class="reset-credits-badge',
+        'aria-label="Consume 1 reset credit and restore quota" class="reset-credits-badge')
+        .replace(/<span class="credit-words"> reset credits?<\/span>/,
+          ` reset${quota.resetCredits?.availableCount === 1 ? '' : 's'}`);
+      planHtml = `
+          <div class="grid-metadata">
+            <div class="grid-metadata-row">
+              <span class="grid-plan-credit">
+                <span class="plan-label">${planLabel ? 'Plan:' : 'Credits:'}</span>
+                ${planLabel ? `<span class="plan-badge plan-type">${escapeHtml(planLabel)}</span>` : ''}
+                ${creditsBadge || creditsPlaceholder}
+                ${xaiWarnBadge}
+              </span>
+              ${expiryBadge ? `<span class="grid-expiry"><span class="plan-label">Exp:</span>${expiryBadge}</span>` : ''}
+            </div>
+          </div>`;
+    }
+
     const idInfo = deriveIdentity(file);
 
     return `
@@ -5636,13 +5694,11 @@ body {
           ${prefix ? `<span class="compact-prefix prefix-text" title="${escapeHtml(prefix)}">${escapeHtml(prefix)}</span>` : ''}
           <div class="card-title-col">
             <span class="file-name" title="${escapeHtml(displayIdentity(idInfo.fullName))}">${escapeHtml(displayIdentity(idInfo.primary))}</span>
-            <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
-              ${prefixDisplay}
-              ${editBtn}
-            </div>
+            ${isGrid ? '' : prefixRow}
           </div>
+          ${isGrid ? prefixRow : ''}
           <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota || pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
-          <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
+          ${isGrid ? '' : favoriteButton}
         </header>
 
         <div class="card-body">
@@ -5651,17 +5707,20 @@ body {
           ${renderCardMiniActivity(file)}
         </div>
 
-        <footer class="card-footer">
-          <div class="toggle-wrap" title="Toggle credential active status">
+        <footer class="card-footer${isGrid ? ' grid-card-footer' : ''}">
+          ${isGrid ? gridResetBadge || resetCreditsPlaceholder : `<div class="toggle-wrap" title="Toggle credential active status">
             <span class="toggle-label">Enabled</span>
             <label class="toggle-switch">
               <input type="checkbox" id="toggle-status-${escapeHtml(fileName)}" ${!file.disabled ? 'checked' : ''} aria-label="Toggle credential active status">
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
-          </div>
+          </div>`}
+          <div class="card-footer-actions">
+          ${isGrid ? favoriteButton : ''}
           <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" aria-label="Refresh quota" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
-            <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
+            <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? isGrid ? 'Refresh' : 'Refresh quota' : 'Static quota'}
           </button>
+          </div>
         </footer>
       </article>
     `;

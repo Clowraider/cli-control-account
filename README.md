@@ -93,6 +93,7 @@ Access the dashboards in your browser:
 - **Per-Credential Activity Sparklines**: Activity bar (~3.3h window), total requests, and success rate (% ok) automatically refresh alongside live quota checks, keeping metrics consistent without full page reloads.
 - **Codex Reset Credits**: View and redeem available Codex reset credits directly from account cards.
 - **Prefix & Routing Management**: Live pencil edit modal for account prefixes with automatic `Prefix (A-Z)` sorting.
+- **Grid Cards**: Compact header with editable prefix, plan, credit balance and subscription expiry; reset credits, favorite and Refresh actions in the footer. Credential enable/disable is managed in the host management UI (CPAMC), not through a Grid toggle. Compact and List keep their existing presentation.
 - **Safety & Robustness**: Concurrency guards, 30s timeout handlers, fail-open defaults, and xAI token-burn protections during unattended auto-refresh.
 
 ### 2. Developer Ego Analytics & Token Valuation
