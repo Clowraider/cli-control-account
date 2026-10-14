@@ -317,6 +317,99 @@ test('T7 prefix toast retains the saved filename after modal cleanup', async () 
   assert.doesNotMatch(dashboard.toasts.at(-1).message, /null/);
 });
 
+test('Grid puts plan and balance beside expiry and moves reset and favorite actions to the footer', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'grid.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { plan: 'Plus', groups: [],
+    subscriptionActiveUntil: '2026-10-13T12:00:00Z',
+    resetCredits: { availableCount: 3 }, credits: { balance: '0' } };
+  dashboard.setLayout('compact');
+  const compact = dashboard.renderCard(file);
+  const list = dashboard.renderListRow(file);
+  assert.match(compact, /class="plan-label">Plan<\/span>/);
+  assert.ok(compact.indexOf('🪙 0') < compact.indexOf('codex-expiry-badge'));
+  dashboard.setLayout('grid');
+  const grid = dashboard.renderCard(file);
+  const metadata = grid.match(/<div class="grid-metadata">([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(metadata, 'Grid has its own compact metadata block');
+  assert.match(metadata[1], /class="plan-label">Plan:<\/span>/);
+  assert.match(metadata[1], /class="plan-label">Exp:<\/span>/);
+  assert.ok(metadata[1].indexOf('Plus') < metadata[1].indexOf('Exp:'));
+  assert.ok(metadata[1].indexOf('🪙 0') < metadata[1].indexOf('Exp:'));
+  assert.doesNotMatch(metadata[1], /btn-consume-credit/);
+  const head = grid.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1];
+  const footer = grid.match(/<footer[^>]*>([\s\S]*?)<\/footer>/)[1];
+  assert.doesNotMatch(head, /btn-favorite/);
+  assert.doesNotMatch(grid, /toggle-status-|Toggle credential active status|>Enabled</);
+  assert.match(footer, /⚡ 3 resets<\/button>/);
+  assert.match(footer, /btn-favorite/);
+  assert.ok(footer.indexOf('btn-consume-credit') < footer.indexOf('btn-favorite'));
+  assert.ok(footer.indexOf('btn-favorite') < footer.indexOf('id="btn-ref-grid.json"'));
+  assert.match(footer, /aria-label="Refresh quota"/);
+  assert.match(footer, /<\/span> Refresh\s*<\/button>/);
+  assert.doesNotMatch(footer, /<\/span> Refresh quota/);
+  assert.match(compact, /toggle-status-grid.json/);
+  assert.match(compact.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1], /btn-favorite/);
+  assert.match(compact, /reset-credits-badge/);
+  assert.equal((grid.match(/btn-consume-credit/g) || []).length, 1);
+  assert.equal((grid.match(/🪙 0/g) || []).length, 1);
+  assert.match(grid, /aria-label="Consume 1 reset credit and restore quota"/);
+  assert.match(grid, /title="Click to consume 1 reset credit and restore quota/);
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.grid-metadata-row\s*\{[^}]*flex-wrap:\s*wrap;/);
+  assert.match(html, /\.grid-metadata \.codex-expiry-badge\s*\{\s*font-weight:\s*400;/);
+  dashboard.setLayout('compact');
+  assert.equal(dashboard.renderCard(file), compact);
+  assert.equal(dashboard.renderListRow(file), list);
+});
+
+test('Grid prefix moves outside the title column while keeping exactly one editable control', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'prefix-grid.json', email: 'person@example.com', provider: 'codex', prefix: '<work>' };
+  const grid = dashboard.renderCard(file);
+  const head = grid.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1];
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /grid\.classList\.toggle\('layout-grid', currentLayout === 'grid'\)/);
+  assert.match(html, /\.layout-grid \.card-head \.prefix-row\s*\{[^}]*margin:\s*0 0 0 auto/);
+  assert.match(head, /class="file-name"[^>]*>[^<]*<\/span>\s*<\/div>\s*<div class="prefix-row"/);
+  assert.match(head, /&lt;work&gt;/);
+  assert.match(head, /data-prefix="&lt;work&gt;"/);
+  assert.equal((grid.match(/class="btn-edit-prefix"/g) || []).length, 1);
+  dashboard.setLayout('compact');
+  const compact = dashboard.renderCard(file);
+  assert.match(compact, /class="file-name"[^>]*>[^<]*<\/span>\s*<div class="prefix-row"/);
+});
+
+test('Grid footer action buttons share a fixed height without changing empty-reset placeholders', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.grid-card-footer button\s*\{[^}]*height:\s*28px/);
+  assert.match(html, /\.grid-card-footer button\s*\{[^}]*align-items:\s*center/);
+  const dashboard = loadDashboard();
+  const file = { name: 'no-reset.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { resetCredits: { availableCount: 0 } };
+  const footer = dashboard.renderCard(file).match(/<footer[^>]*>([\s\S]*?)<\/footer>/)[1];
+  assert.match(footer, /No reset credits/);
+  assert.doesNotMatch(footer, /btn-consume-credit/);
+  assert.match(footer, /<\/span> Refresh\s*<\/button>/);
+});
+
+test('Grid metadata omits absent expiry and preserves planless and static fallbacks', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'fallback.json', provider: 'codex' };
+  for (const subscriptionActiveUntil of [undefined, 'invalid']) {
+    dashboard.quotaStore[file.name] = { groups: [], subscriptionActiveUntil,
+      resetCredits: { availableCount: 1 } };
+    const card = dashboard.renderCard(file);
+    assert.doesNotMatch(card, /class="plan-label">Exp:/);
+    assert.match(card, /class="plan-label">Credits:<\/span>/);
+    assert.match(card, /No credits/);
+    assert.equal((card.match(/btn-consume-credit/g) || []).length, 1);
+    assert.match(card, /⚡ 1 reset<\/button>/);
+    assert.doesNotMatch(card, /⚡ 1 resets/);
+  }
+  assert.match(dashboard.renderCard({ name: 'static.json', provider: 'gemini' }), /Standard Credential/);
+});
+
 test('credit badges share real balances and missing placeholders', () => {
   const { renderCreditBadges } = loadDashboard();
   const missing = renderCreditBadges('a', 'codex', {});
@@ -559,6 +652,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     lowestPercentOfKind,
     quotaKindDetail,
     renderListRow,
+    setLayout: value => { currentLayout = value; },
     renderListQuota,
     setQuotaDisplay: (value) => setQuotaDisplay(value),
     setThroughputCollapsed: (value) => setThroughputCollapsed(value),
@@ -1157,13 +1251,16 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
   assert.equal(stored.credits.balance, '25.5');
   assert.equal(stored.credits.unlimited, false);
 
-  // Render card should contain badge
+  // Compact retains the original hideable words; Grid uses reset(s).
+  dashboard.setLayout('compact');
   const cardHtml = dashboard.renderCard(file);
   assert.ok(cardHtml.includes('reset-credits-badge'), 'card should render reset-credits-badge');
   assert.ok(cardHtml.includes('⚡ 2<span class="credit-words"> reset credits</span>'), 'card should display credit count with compact-hideable words');
   assert.ok(cardHtml.includes('codex-credits-badge'), 'card should render codex-credits-badge');
   assert.ok(cardHtml.includes('25.5'), 'card should render balance');
   assert.ok(cardHtml.includes('codex-expiry-badge'), 'card should render codex-expiry-badge');
+  dashboard.setLayout('grid');
+  assert.match(dashboard.renderCard(file), /⚡ 2 resets<\/button>/);
 });
 
 test('Scope 2: parseCodexResetCredits parses different payload shapes', () => {
