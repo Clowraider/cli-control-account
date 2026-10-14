@@ -317,6 +317,99 @@ test('T7 prefix toast retains the saved filename after modal cleanup', async () 
   assert.doesNotMatch(dashboard.toasts.at(-1).message, /null/);
 });
 
+test('Grid puts plan and balance beside expiry and moves reset and favorite actions to the footer', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'grid.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { plan: 'Plus', groups: [],
+    subscriptionActiveUntil: '2026-10-13T12:00:00Z',
+    resetCredits: { availableCount: 3 }, credits: { balance: '0' } };
+  dashboard.setLayout('compact');
+  const compact = dashboard.renderCard(file);
+  const list = dashboard.renderListRow(file);
+  assert.match(compact, /class="plan-label">Plan<\/span>/);
+  assert.ok(compact.indexOf('🪙 0') < compact.indexOf('codex-expiry-badge'));
+  dashboard.setLayout('grid');
+  const grid = dashboard.renderCard(file);
+  const metadata = grid.match(/<div class="grid-metadata">([\s\S]*?)<\/div>\s*<\/div>/);
+  assert.ok(metadata, 'Grid has its own compact metadata block');
+  assert.match(metadata[1], /class="plan-label">Plan:<\/span>/);
+  assert.match(metadata[1], /class="plan-label">Exp:<\/span>/);
+  assert.ok(metadata[1].indexOf('Plus') < metadata[1].indexOf('Exp:'));
+  assert.ok(metadata[1].indexOf('🪙 0') < metadata[1].indexOf('Exp:'));
+  assert.doesNotMatch(metadata[1], /btn-consume-credit/);
+  const head = grid.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1];
+  const footer = grid.match(/<footer[^>]*>([\s\S]*?)<\/footer>/)[1];
+  assert.doesNotMatch(head, /btn-favorite/);
+  assert.doesNotMatch(grid, /toggle-status-|Toggle credential active status|>Enabled</);
+  assert.match(footer, /⚡ 3 resets<\/button>/);
+  assert.match(footer, /btn-favorite/);
+  assert.ok(footer.indexOf('btn-consume-credit') < footer.indexOf('btn-favorite'));
+  assert.ok(footer.indexOf('btn-favorite') < footer.indexOf('id="btn-ref-grid.json"'));
+  assert.match(footer, /aria-label="Refresh quota"/);
+  assert.match(footer, /<\/span> Refresh\s*<\/button>/);
+  assert.doesNotMatch(footer, /<\/span> Refresh quota/);
+  assert.match(compact, /toggle-status-grid.json/);
+  assert.match(compact.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1], /btn-favorite/);
+  assert.match(compact, /reset-credits-badge/);
+  assert.equal((grid.match(/btn-consume-credit/g) || []).length, 1);
+  assert.equal((grid.match(/🪙 0/g) || []).length, 1);
+  assert.match(grid, /aria-label="Consume 1 reset credit and restore quota"/);
+  assert.match(grid, /title="Click to consume 1 reset credit and restore quota/);
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.grid-metadata-row\s*\{[^}]*flex-wrap:\s*wrap;/);
+  assert.match(html, /\.grid-metadata \.codex-expiry-badge\s*\{\s*font-weight:\s*400;/);
+  dashboard.setLayout('compact');
+  assert.equal(dashboard.renderCard(file), compact);
+  assert.equal(dashboard.renderListRow(file), list);
+});
+
+test('Grid prefix moves outside the title column while keeping exactly one editable control', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'prefix-grid.json', email: 'person@example.com', provider: 'codex', prefix: '<work>' };
+  const grid = dashboard.renderCard(file);
+  const head = grid.match(/<header[^>]*>([\s\S]*?)<\/header>/)[1];
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /grid\.classList\.toggle\('layout-grid', currentLayout === 'grid'\)/);
+  assert.match(html, /\.layout-grid \.card-head \.prefix-row\s*\{[^}]*margin:\s*0 0 0 auto/);
+  assert.match(head, /class="file-name"[^>]*>[^<]*<\/span>\s*<\/div>\s*<div class="prefix-row"/);
+  assert.match(head, /&lt;work&gt;/);
+  assert.match(head, /data-prefix="&lt;work&gt;"/);
+  assert.equal((grid.match(/class="btn-edit-prefix"/g) || []).length, 1);
+  dashboard.setLayout('compact');
+  const compact = dashboard.renderCard(file);
+  assert.match(compact, /class="file-name"[^>]*>[^<]*<\/span>\s*<div class="prefix-row"/);
+});
+
+test('Grid footer action buttons share a fixed height without changing empty-reset placeholders', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.grid-card-footer button\s*\{[^}]*height:\s*28px/);
+  assert.match(html, /\.grid-card-footer button\s*\{[^}]*align-items:\s*center/);
+  const dashboard = loadDashboard();
+  const file = { name: 'no-reset.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { resetCredits: { availableCount: 0 } };
+  const footer = dashboard.renderCard(file).match(/<footer[^>]*>([\s\S]*?)<\/footer>/)[1];
+  assert.match(footer, /No reset credits/);
+  assert.doesNotMatch(footer, /btn-consume-credit/);
+  assert.match(footer, /<\/span> Refresh\s*<\/button>/);
+});
+
+test('Grid metadata omits absent expiry and preserves planless and static fallbacks', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'fallback.json', provider: 'codex' };
+  for (const subscriptionActiveUntil of [undefined, 'invalid']) {
+    dashboard.quotaStore[file.name] = { groups: [], subscriptionActiveUntil,
+      resetCredits: { availableCount: 1 } };
+    const card = dashboard.renderCard(file);
+    assert.doesNotMatch(card, /class="plan-label">Exp:/);
+    assert.match(card, /class="plan-label">Credits:<\/span>/);
+    assert.match(card, /No credits/);
+    assert.equal((card.match(/btn-consume-credit/g) || []).length, 1);
+    assert.match(card, /⚡ 1 reset<\/button>/);
+    assert.doesNotMatch(card, /⚡ 1 resets/);
+  }
+  assert.match(dashboard.renderCard({ name: 'static.json', provider: 'gemini' }), /Standard Credential/);
+});
+
 test('credit badges share real balances and missing placeholders', () => {
   const { renderCreditBadges } = loadDashboard();
   const missing = renderCreditBadges('a', 'codex', {});
@@ -329,6 +422,23 @@ test('credit badges share real balances and missing placeholders', () => {
   assert.equal(real.resetCreditsPlaceholder + real.creditsPlaceholder, '');
   assert.equal(renderCreditBadges('a', 'codex', { resetCredits: { availableCount: 0 } }).resetCreditsBadge, '');
   assert.match(renderCreditBadges('a', 'unknown', { credits: { unlimited: true } }).creditsBadge, /♾️/);
+});
+
+test('List tables share fixed column widths so two-column tables fit and stay aligned', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const px = (re) => Number(html.match(re)?.[1]);
+  assert.match(html, /\.account-table\s*\{[^}]*table-layout:\s*fixed;/);
+  assert.match(html, /<colgroup><col class="col-account"><col class="col-activity"><col class="col-quota"><col class="col-quota"><col class="col-plan"><col class="col-actions"><\/colgroup>/);
+  const account = px(/\.col-account\s*\{\s*width:\s*(\d+)px/);
+  const accountShown = px(/\.emails-shown \.col-account\s*\{\s*width:\s*(\d+)px/);
+  const quota = px(/\.col-quota\s*\{\s*width:\s*(\d+)px/);
+  const plan = px(/@container \(max-width: 760px\)\s*\{[^@]*?\.col-plan\s*\{\s*width:\s*(\d+)px/);
+  const actions = px(/\.col-actions\s*\{\s*width:\s*(\d+)px/);
+  const fixed = account + 2 * quota + plan + actions;
+  // Two columns only while Activity keeps at least 124px; wider Account when emails are shown.
+  assert.equal(px(/\.list-columns\s*\{[^}]*--list-min:\s*(\d+)px/), fixed + 124);
+  assert.equal(px(/\.list-columns\.emails-shown\s*\{\s*--list-min:\s*(\d+)px/), fixed - account + accountShown + 124);
+  assert.match(html, /minmax\(min\(100%, var\(--list-min\)\), 1fr\)/);
 });
 
 test('maintenance starts hidden and uses the native accessible chevron pattern', () => {
@@ -436,7 +546,10 @@ test('quota display changes presentation only across list and shared grid/compac
   assert.equal(row.percent, 8);
   assert.equal(dashboard.isLowQuotaAccount(quota), true);
   assert.equal(dashboard.renderListQuota({}, 'weekly'), '<td class="list-quota">—</td>');
-  for (const [percent, percentLabel] of [[100, 'Quota available'], [null, '—'], [undefined, 'Unavailable']]) {
+  Object.assign(row, { percent: 100, percentLabel: 'Quota available' });
+  assert.match(dashboard.renderCard(file), /0% used/);
+  assert.doesNotMatch(dashboard.renderCard(file), /class="meta-percent">Quota available/);
+  for (const [percent, percentLabel] of [[null, '—'], [undefined, 'Unavailable']]) {
     Object.assign(row, { percent, percentLabel });
     assert.ok(dashboard.renderCard(file).includes(percentLabel));
   }
@@ -444,6 +557,35 @@ test('quota display changes presentation only across list and shared grid/compac
   dashboard.setQuotaDisplay('remaining');
   assert.equal(dashboard.renderListQuota(quota, 'weekly'), remainingList);
   assert.equal(dashboard.renderCard(file), remainingCard);
+});
+
+test('quota display keeps known boundary labels numeric and special billing labels intact', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'quota-boundary.json', type: 'codex' };
+  const row = { label: 'Weekly', weekly: true, resetLabel: 'Refreshes in 7d 0h' };
+  dashboard.quotaStore[file.name] = { groups: [{ rows: [row] }] };
+  for (const mode of ['remaining', 'used']) {
+    dashboard.setQuotaDisplay(mode);
+    for (const percent of [0, 8, 100]) {
+      Object.assign(row, { percent, percentLabel: percent === 100 ? 'Quota available' : `${percent}% remaining` });
+      const value = mode === 'used' ? 100 - percent : percent;
+      assert.match(dashboard.renderCard(file), new RegExp(`class="meta-percent">${value}% ${mode}<`));
+      assert.match(dashboard.renderListQuota(dashboard.quotaStore[file.name], 'weekly'), new RegExp(`>${value}%<`));
+      assert.equal(row.percent, percent);
+    }
+    for (const [percent, percentLabel] of [[null, 'No data'], [undefined, 'Unavailable'], [NaN, 'No data'],
+      [50, '$5 / $10'], [100, 'Active (Pay-as-you-go)']]) {
+      Object.assign(row, { percent, percentLabel });
+      assert.ok(dashboard.renderCard(file).includes(`class="meta-percent">${percentLabel}<`));
+    }
+  }
+});
+
+test('shared quota meter layout keeps label and metadata on stable separate rows', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.meter-label\s*\{[^}]*flex-basis:\s*100%/);
+  assert.match(html, /\.meter-meta\s*\{[^}]*width:\s*100%/);
+  assert.match(html, /\.meter-meta\s*\{[^}]*flex-wrap:\s*nowrap/);
 });
 
 test('quota refresh controls reuse an accessible currentColor SVG in every layout', () => {
@@ -463,6 +605,36 @@ test('quota refresh controls reuse an accessible currentColor SVG in every layou
     }
   }
   assert.match(dashboard.getElement('refresh-all-icon').innerHTML, /<svg[^>]*stroke="currentColor"/);
+});
+
+test('shared Grid/Compact card loading body uses the spinning refresh SVG', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'loading.json', type: 'codex' };
+  dashboard.quotaStore[file.name] = { loading: true };
+  const card = dashboard.renderCard(file);
+  const body = card.match(/<div[^>]*>\s*(<span[^>]*>[\s\S]*?<\/span>)\s*Loading live quota data\.\.\./);
+  assert.ok(body, 'card renders the loading body');
+  assert.doesNotMatch(card, /🔄/);
+  assert.match(body[1], /class="refresh-icon spinning"/);
+  assert.match(body[1], /<svg[^>]*stroke="currentColor"[^>]*aria-hidden="true"/);
+});
+
+test('Ego refresh icon spins until the last overlapping load finishes', async () => {
+  const responses = [];
+  const dashboard = loadDashboard(() => new Promise((resolve) => responses.push(resolve)));
+  dashboard.initEgoListeners();
+  const icon = dashboard.getElement('ego-refresh-icon');
+  assert.equal(icon.classList.contains('spinning'), false);
+  const first = dashboard.getElement('ego-btn-refresh').click();
+  assert.equal(icon.classList.contains('spinning'), true);
+  dashboard.setEgoRange('7d');
+  const second = dashboard.loadEgoOverview();
+  responses.slice(0, 6).forEach(resolve => resolve({ ok: true, json: async () => [] }));
+  await first;
+  assert.equal(icon.classList.contains('spinning'), true, 'still spinning while a newer load is pending');
+  responses.slice(6).forEach(resolve => resolve({ ok: true, json: async () => [] }));
+  await second;
+  assert.equal(icon.classList.contains('spinning'), false);
 });
 
 test('Ego preferences default, validate, and persist independently', () => {
@@ -559,6 +731,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     lowestPercentOfKind,
     quotaKindDetail,
     renderListRow,
+    setLayout: value => { currentLayout = value; },
     renderListQuota,
     setQuotaDisplay: (value) => setQuotaDisplay(value),
     setThroughputCollapsed: (value) => setThroughputCollapsed(value),
@@ -1157,13 +1330,16 @@ test('Scope 1 & 2: fetchCodexQuota sets headers and extracts resetCredits', asyn
   assert.equal(stored.credits.balance, '25.5');
   assert.equal(stored.credits.unlimited, false);
 
-  // Render card should contain badge
+  // Compact retains the original hideable words; Grid uses reset(s).
+  dashboard.setLayout('compact');
   const cardHtml = dashboard.renderCard(file);
   assert.ok(cardHtml.includes('reset-credits-badge'), 'card should render reset-credits-badge');
   assert.ok(cardHtml.includes('⚡ 2<span class="credit-words"> reset credits</span>'), 'card should display credit count with compact-hideable words');
   assert.ok(cardHtml.includes('codex-credits-badge'), 'card should render codex-credits-badge');
   assert.ok(cardHtml.includes('25.5'), 'card should render balance');
   assert.ok(cardHtml.includes('codex-expiry-badge'), 'card should render codex-expiry-badge');
+  dashboard.setLayout('grid');
+  assert.match(dashboard.renderCard(file), /⚡ 2 resets<\/button>/);
 });
 
 test('Scope 2: parseCodexResetCredits parses different payload shapes', () => {
@@ -1845,4 +2021,103 @@ test('activity bar is reused in the full mini activity and escapes tooltips', ()
   assert.ok(bar.includes('activity-col'));
   assert.ok(dashboard.renderCardMiniActivity(file).includes(bar));
   assert.ok(!bar.includes('<unsafe>'));
+});
+
+test('native card summary distinguishes renewal from individual reset expiries', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('hover must not fetch'); });
+  const file = { name: 'hover.json', provider: 'codex' };
+  const renewal = new Date(Date.now() + 86400000 * 2 + 3600000).toISOString();
+  dashboard.quotaStore[file.name] = { plan: 'Plus', subscriptionActiveUntil: renewal,
+    credits: { balance: '0' }, resetCredits: { availableCount: 3, credits: [] } };
+  const before = JSON.stringify(dashboard.quotaStore[file.name]);
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /^Plan: Plus\nRenewal time:/);
+  assert.match(title, /\nCredit balance: 0\nManual resets: 3$/);
+  assert.match(title, /in 2d/);
+  assert.doesNotMatch(title, /Reset 1|Manual reset expiry/);
+  assert.equal(JSON.stringify(dashboard.quotaStore[file.name]), before);
+  assert.equal(requests, 0);
+});
+
+test('reset hover lists available credits in expiry order using browser-local date and offset', () => {
+  const dashboard = loadDashboard();
+  const date = days => new Date(Date.now() + days * 86400000 + 3600000).toISOString();
+  const earlier = date(9), later = date(16);
+  const credit = (expires_at, status = 'available') => ({ reset_type: 'codex_rate_limits', status, expires_at });
+  const quota = { resetCredits: dashboard.parseCodexResetCredits({ available_count: 3,
+    credits: [credit(later), credit(earlier), credit('bad-date'), credit(date(1), 'redeemed')] }) };
+  const before = JSON.stringify(quota);
+  const badge = dashboard.renderCreditBadges('hover.json', 'codex', quota).resetCreditsBadge;
+  const title = badge.match(/title="([^"]*)"/)[1];
+  const local = value => new Date(value).toLocaleString(undefined, {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset',
+  });
+  assert.match(title, /^Click to consume 1 reset credit and restore quota\nManual reset expiry \(/);
+  assert.ok(title.includes(Intl.DateTimeFormat().resolvedOptions().timeZone));
+  assert.ok(title.includes(`Reset 1: ${local(earlier)} · in 9d`));
+  assert.ok(title.includes(`Reset 2: ${local(later)} · in 16d`));
+  assert.match(title, /Reset 3: Expiry unavailable/);
+  assert.doesNotMatch(title, /Reset 4|bad-date|redeemed|earliest|nearest/);
+  assert.equal(JSON.stringify(quota), before, 'sorting must not mutate loaded credit data');
+});
+
+test('native hover handles missing and expired dates without inventing renewal or expiry', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'hover-missing.json', provider: 'codex' };
+  dashboard.quotaStore[file.name] = { plan: 'Plus' };
+  const title = dashboard.renderCard(file).match(/<article class="card" title="([^"]*)"/)[1];
+  assert.match(title, /Renewal time: Unavailable/);
+  assert.match(title, /Credit balance: —/);
+  assert.match(title, /Manual resets: —/);
+  const missing = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1 } }).resetCreditsBadge;
+  assert.match(missing, /Expiry details unavailable/);
+  const expired = new Date(Date.now() - 86400000).toISOString();
+  const badge = dashboard.renderCreditBadges(file.name, 'codex', { resetCredits: { availableCount: 1,
+    credits: [{ reset_type: 'codex_rate_limits', status: 'available', expires_at: expired }] } }).resetCreditsBadge;
+  assert.match(badge, /· expired/);
+  assert.doesNotMatch(badge, /in -/);
+  dashboard.quotaStore[file.name].plan = '\"<script>';
+  assert.match(dashboard.renderCard(file), /Plan: &quot;&lt;script&gt;/);
+});
+
+test('provider accents identify each account in cards and mixed-provider List rows without changing actions', () => {
+  let requests = 0;
+  const dashboard = loadDashboard(() => { requests++; throw new Error('rendering must not fetch'); });
+  for (const provider of ['antigravity', 'claude', 'codex', 'kimi', 'xai', 'gemini', 'vertex', 'qwen', 'iflow', 'unknown']) {
+    const file = { name: `${provider}.json`, provider };
+    const card = dashboard.renderCard(file), list = dashboard.renderListRow(file);
+    assert.match(card, new RegExp(`<article[^>]*data-provider="${provider}"`));
+    assert.match(list, new RegExp(`^<tr data-provider="${provider}"`));
+    assert.match(card, /btn-favorite/);
+    assert.match(list, /btn-favorite/);
+    assert.match(card, /aria-label="Refresh quota"/);
+    assert.match(list, /aria-label="Refresh quota"/);
+  }
+  assert.equal(requests, 0);
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.card\s*\{[^}]*linear-gradient\(135deg,[^;]*8%, transparent\), transparent 260px\)/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*6%, transparent\), transparent 55%/);
+  assert.match(html, /\.account-table tbody tr\s*\{[^}]*linear-gradient\(/);
+  assert.match(html, /:where\(\.card, \.account-table tbody tr\)\s*\{[^}]*--provider-color:\s*transparent/);
+  assert.match(html, /\[data-provider="antigravity"\]\s*\{\s*--provider-color:\s*#0061ff;/);
+  assert.match(html, /--brand-antigravity:\s*#3b82f6;/);
+  for (const provider of ['claude', 'codex', 'kimi', 'xai']) {
+    assert.match(html, new RegExp(`\\[data-provider="${provider}"\\] \\{ --provider-color: var\\(--brand-${provider}\\)`));
+  }
+  assert.match(html, /\.account-table tbody tr:nth-child\(even\)\s*\{\s*background-color:\s*var\(--bg-primary\)/);
+});
+
+test('Quota alone uses the requested canvas background while Ego keeps the base theme', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /body:has\(#nav-btn-quota\.active\)\s*\{\s*background-color:\s*#151412;/);
+  assert.match(html, /--bg-app:\s*#0d1117;/);
+  assert.match(html, /body\s*\{\s*background-color:\s*var\(--bg-app\);/);
+  const dashboard = loadDashboard();
+  for (let i = 0; i < 2; i++) {
+    dashboard.switchView('ego');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), false);
+    dashboard.switchView('quota');
+    assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), true);
+  }
 });

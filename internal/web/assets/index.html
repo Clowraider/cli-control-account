@@ -57,6 +57,8 @@ body {
   padding: 16px calc(2 * var(--gap-x));
 }
 
+body:has(#nav-btn-quota.active) { background-color: #151412; }
+
 .page {
   display: flex;
   flex-direction: column;
@@ -362,21 +364,30 @@ body {
 /* Layout: list (account table) */
 .cards-grid.layout-list { display: block; min-width: 0; }
 .account-table-scroll { overflow-x: auto; overflow-y: hidden; border-radius: var(--radius-card); border: 1px solid var(--border-color); background: var(--bg-card); }
-/* Two columns only while each table has room; otherwise one column (no overlap) */
-.list-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 720px), 1fr)); gap: 12px calc(2 * var(--gap-x)); }
+/* Two columns only while Activity keeps >= 124px next to the fixed columns; otherwise one column */
+.list-columns { --list-min: 660px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--list-min)), 1fr)); gap: 12px calc(2 * var(--gap-x)); }
+.list-columns.emails-shown { --list-min: 770px; }
 .list-columns > * { min-width: 0; }
-/* Plan text is the first thing to shrink when a table gets narrow */
+/* Fixed column widths shared by every List table: stacked tables stay aligned */
+.col-account { width: 110px; }
+.emails-shown .col-account { width: 220px; }
+.col-quota { width: 90px; }
+.col-plan { width: 180px; }
+.col-actions { width: 96px; }
 .account-table-scroll { container-type: inline-size; }
+/* Plan is the first column to shrink when a table gets narrow */
 @container (max-width: 760px) {
-  .list-plan-name { display: block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .col-plan { width: 150px; }
 }
-.account-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--bg-card); }
+.account-table td { overflow: hidden; }
+.account-table .file-name, .list-plan-name { display: block; overflow: hidden; text-overflow: ellipsis; }
+.account-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; background: var(--bg-card); }
 .account-table th, .account-table td { padding: 8px calc(2 * var(--gap-x)); text-align: left; border-bottom: 1px solid var(--border-color); }
 .account-table th { color: var(--text-secondary); text-align: center; }
 .account-table td { width: 1%; white-space: nowrap; }
 .account-table td.list-activity { width: auto; min-width: 120px; white-space: nowrap; }
 .list-activity .activity-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.account-table tbody tr:nth-child(even) { background: var(--bg-primary); }
+.account-table tbody tr:nth-child(even) { background-color: var(--bg-primary); }
 .account-table .prefix-row { margin-top: 3px; }
 .account-table .list-quota { min-width: 90px; }
 .account-table .track { margin-top: 4px; height: 4px; }
@@ -386,6 +397,20 @@ body {
 .list-credits > * { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; }
 
 /* Quota Card */
+:where(.card, .account-table tbody tr) { --provider-color: transparent; }
+[data-provider="antigravity"] { --provider-color: #0061ff; }
+[data-provider="claude"] { --provider-color: var(--brand-claude); }
+[data-provider="codex"] { --provider-color: var(--brand-codex); }
+[data-provider="kimi"] { --provider-color: var(--brand-kimi); }
+[data-provider="xai"] { --provider-color: var(--brand-xai); }
+[data-provider="gemini"] { --provider-color: #38bdf8; }
+[data-provider="vertex"] { --provider-color: #818cf8; }
+[data-provider="qwen"] { --provider-color: #34d399; }
+[data-provider="iflow"] { --provider-color: #ec4899; }
+.account-table tbody tr {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--provider-color) 6%, transparent), transparent 55%);
+}
+
 .card {
   position: relative;
   display: flex;
@@ -394,7 +419,7 @@ body {
   padding: 12px 14px;
   border-radius: var(--radius-card);
   border: 1px solid var(--border-color);
-  background: var(--bg-card);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--provider-color) 8%, transparent), transparent 260px), var(--bg-card);
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -748,6 +773,34 @@ body {
   font-weight: 700;
   color: var(--text-primary);
 }
+
+.grid-metadata {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px var(--gap-x);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.grid-metadata-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px var(--gap-x);
+  min-width: 0;
+}
+.layout-grid .card-head { align-items: center; }
+.layout-grid .card-head .prefix-row { margin: 0 0 0 auto; max-width: 48%; min-width: 0; }
+.layout-grid .card-head .prefix-text { overflow: hidden; text-overflow: ellipsis; }
+.layout-grid .card-head .prefix-label { flex-shrink: 0; }
+.grid-metadata .plan-type { min-width: 0; }
+.grid-plan-credit { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.grid-metadata .grid-expiry { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.card-footer-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.grid-card-footer { flex-wrap: wrap; gap: 6px; }
+.grid-card-footer .card-footer-actions { margin-left: auto; }
+.grid-card-footer button { height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+.grid-metadata .codex-expiry-badge { font-weight: 400; }
+.grid-metadata .plan-badge { overflow-wrap: anywhere; }
 
 .plan-label { flex-shrink: 0; white-space: nowrap; }
 .plan-badges {
@@ -1193,6 +1246,7 @@ body {
 }
 
 .meter-label {
+  flex-basis: 100%;
   color: var(--text-secondary);
   font-weight: 500;
   flex-shrink: 0;
@@ -1200,15 +1254,18 @@ body {
 }
 
 .meter-meta {
+  width: 100%;
   font-family: var(--font-mono);
   font-size: 11px;
   display: flex;
+  justify-content: space-between;
   gap: 3px var(--gap-x);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
 .meta-percent {
+  flex-shrink: 0;
   font-weight: 650;
   color: var(--text-primary);
 }
@@ -2333,8 +2390,8 @@ body {
   }
 
   function displayPercentLabel(row) {
-    if (quotaDisplay === 'used' && Number.isFinite(row.percent) && /% remaining$/.test(row.percentLabel)) {
-      return `${displayPercent(row.percent)}% used`;
+    if (Number.isFinite(row.percent) && (/% remaining$/.test(row.percentLabel) || row.percentLabel === 'Quota available')) {
+      return `${displayPercent(row.percent)}% ${quotaDisplay}`;
     }
     return row.percentLabel;
   }
@@ -5344,6 +5401,7 @@ body {
   }
 
   function render() {
+    grid.classList.toggle('layout-grid', currentLayout === 'grid');
     grid.classList.toggle('layout-compact', currentLayout === 'compact');
     grid.classList.toggle('layout-list', currentLayout === 'list');
     btnListColumns.style.display = currentLayout === 'list' ? '' : 'none';
@@ -5365,7 +5423,7 @@ body {
     }
 
     function renderListTable(rows) {
-      return `<div class="account-table-scroll"><table class="account-table" aria-label="Accounts"><thead><tr>
+      return `<div class="account-table-scroll"><table class="account-table" aria-label="Accounts"><colgroup><col class="col-account"><col class="col-activity"><col class="col-quota"><col class="col-quota"><col class="col-plan"><col class="col-actions"></colgroup><thead><tr>
           <th scope="col">Account</th><th scope="col">Activity</th><th scope="col">5h</th>
           <th scope="col">Weekly</th><th scope="col">Plan</th><th scope="col">Actions</th>
         </tr></thead><tbody>${rows.map(renderListRow).join('')}</tbody></table></div>`;
@@ -5374,8 +5432,8 @@ body {
     if (currentLayout === 'list') {
       const midpoint = Math.ceil(sorted.length / 2);
       grid.innerHTML = listTwoColumns
-        ? `<div class="list-columns">${renderListTable(sorted.slice(0, midpoint))}${renderListTable(sorted.slice(midpoint))}</div>`
-        : renderListTable(sorted);
+        ? `<div class="list-columns${hideEmails ? '' : ' emails-shown'}">${renderListTable(sorted.slice(0, midpoint))}${renderListTable(sorted.slice(midpoint))}</div>`
+        : `<div class="${hideEmails ? '' : 'emails-shown'}">${renderListTable(sorted)}</div>`;
     } else {
       grid.innerHTML = sorted.map(file => renderCard(file)).join('');
     }
@@ -5415,6 +5473,18 @@ body {
     });
 
     grid.querySelectorAll('.btn-consume-credit').forEach(btn => {
+      const card = btn.closest('.card');
+      if (card) {
+        const summary = card.getAttribute('title');
+        const hideSummary = () => card.removeAttribute('title');
+        const restoreSummary = () => {
+          if (!btn.matches(':hover, :focus')) card.setAttribute('title', summary);
+        };
+        btn.addEventListener('mouseenter', hideSummary);
+        btn.addEventListener('mouseleave', restoreSummary);
+        btn.addEventListener('focus', hideSummary);
+        btn.addEventListener('blur', restoreSummary);
+      }
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const fName = btn.dataset.filename;
@@ -5444,19 +5514,39 @@ body {
           : (typeof quota.plan === 'string' && quota.plan.trim() ? quota.plan.trim() : null));
   }
 
-  function renderCreditBadges(fileName, provider, quota, compactInfo = []) {
+  function formatAccountHoverDate(value, kind) {
+    const ms = typeof value === 'number' ? (value < 1e11 ? value * 1000 : value) : Date.parse(value);
+    if (!Number.isFinite(ms)) return 'Unavailable';
+    const absolute = new Date(ms).toLocaleString(undefined, {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'shortOffset',
+    });
+    const duration = formatDuration(new Date(ms).toISOString());
+    return `${absolute} · ${duration ? `in ${duration}` : kind === 'reset' ? 'expired' : 'passed'}`;
+  }
+
+  function renderCreditBadges(fileName, provider, quota) {
     const resetCreditsCount = quota.resetCredits?.availableCount;
-    if (typeof resetCreditsCount === 'number') compactInfo.push(`Reset credits: ${resetCreditsCount}`);
+    let resetTitle = 'Click to consume 1 reset credit and restore quota';
+    if (typeof resetCreditsCount === 'number' && resetCreditsCount > 0) {
+      const credits = [...(quota.resetCredits?.credits || [])].sort((a, b) => {
+        const aMs = Date.parse(a.expires_at), bMs = Date.parse(b.expires_at);
+        return (Number.isFinite(aMs) ? aMs : Infinity) - (Number.isFinite(bMs) ? bMs : Infinity);
+      });
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      resetTitle += `\nManual reset expiry (${zone})`;
+      resetTitle += credits.length ? credits.map((credit, i) => {
+        const expiry = formatAccountHoverDate(credit.expires_at, 'reset');
+        return `\nReset ${i + 1}: ${expiry === 'Unavailable' ? 'Expiry unavailable' : expiry}`;
+      }).join('') : '\nExpiry details unavailable';
+    }
     const resetCreditsBadge = (typeof resetCreditsCount === 'number' && resetCreditsCount > 0)
-      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" ${pendingCredits.has(fileName) ? 'disabled' : ''} data-filename="${escapeHtml(fileName)}" title="Click to consume 1 reset credit and restore quota">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
+      ? `<button type="button" class="reset-credits-badge actionable btn-consume-credit" ${pendingCredits.has(fileName) ? 'disabled' : ''} data-filename="${escapeHtml(fileName)}" title="${escapeHtml(resetTitle)}">⚡ ${resetCreditsCount}<span class="credit-words"> reset credit${resetCreditsCount > 1 ? 's' : ''}</span></button>`
       : '';
     let creditsBadge = '';
     if ((provider === 'codex' || provider === 'unknown') && quota.credits) {
       if (quota.credits.unlimited) {
-        compactInfo.push('Credits: Unlimited');
         creditsBadge = `<span class="plan-badge codex-credits-badge" title="Unlimited credits">♾️<span class="credit-words"> Unlimited</span></span>`;
       } else if (quota.credits.balance !== null) {
-        compactInfo.push(`Credits: ${quota.credits.balance}`);
         creditsBadge = `<span class="plan-badge codex-credits-badge" title="Account credit balance">🪙 ${escapeHtml(quota.credits.balance)}</span>`;
       }
     }
@@ -5476,7 +5566,7 @@ body {
     const planLabel = accountPlanLabel(file, provider, quota);
     const name = escapeHtml(file.name);
     const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(file.name, provider, quota);
-    return `<tr>
+    return `<tr data-provider="${escapeHtml(provider)}">
       <td><span class="file-name" title="${escapeHtml(displayIdentity(identity.fullName))}">${escapeHtml(displayIdentity(identity.primary))}</span>
         <div class="prefix-row"><span class="prefix-label">Prefix:</span><span class="prefix-text">${escapeHtml(file.prefix || '—')}</span></div></td>
       <td class="list-activity">${renderCardMiniActivity(file)}</td>
@@ -5504,6 +5594,12 @@ body {
     const editPencilSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>`;
     const editBtn = `<button class="btn-edit-prefix" data-filename="${escapeHtml(fileName)}" data-prefix="${escapeHtml(prefix)}" title="${prefix ? 'Modificar perfil / prefijo' : 'Agregar perfil / prefijo'}" aria-label="Edit prefix">${editPencilSvg}</button>`;
 
+    const prefixRow = `<div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
+              ${prefixDisplay}
+              ${editBtn}
+            </div>`;
+    const favoriteButton = `<button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>`;
+
     const PROVIDER_METAS = {
       antigravity: { char: '▲', color: 'var(--brand-antigravity)' },
       claude: { char: '✳', color: 'var(--brand-claude)' },
@@ -5530,7 +5626,7 @@ body {
     } else if (quota.loading) {
       bodyContent = `
         <div style="padding: 20px 0; text-align: center; color: var(--text-muted); font-size: 12px;">
-          <span class="spinning" style="display:inline-block; margin-right:5px;">🔄</span> Loading live quota data...
+          <span class="refresh-icon spinning" style="vertical-align:middle; margin-right:5px;">${REFRESH_ICON}</span> Loading live quota data...
         </div>
       `;
     } else if (quota.error) {
@@ -5579,9 +5675,7 @@ body {
 
     const planLabel = accountPlanLabel(file, provider, quota);
 
-    const compactInfo = [];
-    if (planLabel) compactInfo.push(`Plan: ${planLabel}`);
-    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(fileName, provider, quota, compactInfo);
+    const { resetCreditsBadge, creditsBadge, resetCreditsPlaceholder, creditsPlaceholder } = renderCreditBadges(fileName, provider, quota);
 
     const isPayAsYouGo = quota.isPayAsYouGo || (provider === 'xai' && quota.plan === 'Paid');
     const xaiWarnBadge = isPayAsYouGo
@@ -5589,6 +5683,7 @@ body {
       : '';
 
     let codexBadges = creditsBadge;
+    let expiryBadge = '';
     if (provider === 'codex' || provider === 'unknown') {
       if (quota.subscriptionActiveUntil) {
         const activeMs = typeof quota.subscriptionActiveUntil === 'number'
@@ -5597,13 +5692,13 @@ body {
         if (activeMs && !isNaN(activeMs)) {
           const d = new Date(activeMs);
           const dateStr = d.toLocaleDateString();
-          compactInfo.push(`Exp: ${dateStr}`);
           codexBadges += `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">Exp: ${escapeHtml(dateStr)}</span>`;
+          expiryBadge = `<span class="plan-badge codex-expiry-badge" title="Subscription active until ${escapeHtml(d.toISOString())}">${escapeHtml(dateStr)}</span>`;
         }
       }
     }
 
-    const planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
+    let planHtml = (planLabel || resetCreditsBadge || isPayAsYouGo || codexBadges) ? `
           <div class="plan-row">
             <span class="plan-label">${planLabel ? 'Plan' : 'Credits'}</span>
             <div class="plan-badges">
@@ -5616,10 +5711,39 @@ body {
             <div class="compact-activity">${renderActivityBar(file)}</div>
           </div>` : `<div class="plan-row"><div class="plan-badges">${resetCreditsPlaceholder}${creditsPlaceholder}</div><div class="compact-activity">${renderActivityBar(file)}</div></div>`;
 
+    const isGrid = currentLayout === 'grid';
+    let gridResetBadge = '';
+    if (isGrid) {
+      gridResetBadge = resetCreditsBadge.replace('class="reset-credits-badge',
+        'aria-label="Consume 1 reset credit and restore quota" class="reset-credits-badge')
+        .replace(/<span class="credit-words"> reset credits?<\/span>/,
+          ` reset${quota.resetCredits?.availableCount === 1 ? '' : 's'}`);
+      planHtml = `
+          <div class="grid-metadata">
+            <div class="grid-metadata-row">
+              <span class="grid-plan-credit">
+                <span class="plan-label">${planLabel ? 'Plan:' : 'Credits:'}</span>
+                ${planLabel ? `<span class="plan-badge plan-type">${escapeHtml(planLabel)}</span>` : ''}
+                ${creditsBadge || creditsPlaceholder}
+                ${xaiWarnBadge}
+              </span>
+              ${expiryBadge ? `<span class="grid-expiry"><span class="plan-label">Exp:</span>${expiryBadge}</span>` : ''}
+            </div>
+          </div>`;
+    }
+
     const idInfo = deriveIdentity(file);
+    const balance = quota.credits?.unlimited ? 'Unlimited' : quota.credits?.balance ?? '—';
+    const cardSummary = [
+      `Plan: ${planLabel || '—'}`,
+      `Renewal time: ${formatAccountHoverDate(quota.subscriptionActiveUntil, 'renewal')}`,
+      `Credit balance: ${balance}`,
+      `Manual resets: ${quota.resetCredits?.availableCount ?? '—'}`,
+    ].join('\n');
 
     return `
-      <article class="card" title="${escapeHtml(compactInfo.join(' · '))}">
+      <article class="card" title="${escapeHtml(cardSummary)}"
+        data-provider="${escapeHtml(provider)}">
         <header class="card-head">
           <div class="provider-icon-box" style="color: ${iconColor};">
             ${iconChar}
@@ -5627,13 +5751,11 @@ body {
           ${prefix ? `<span class="compact-prefix prefix-text" title="${escapeHtml(prefix)}">${escapeHtml(prefix)}</span>` : ''}
           <div class="card-title-col">
             <span class="file-name" title="${escapeHtml(displayIdentity(idInfo.fullName))}">${escapeHtml(displayIdentity(idInfo.primary))}</span>
-            <div class="prefix-row" title="Account Prefix: ${escapeHtml(prefix || 'None')}">
-              ${prefixDisplay}
-              ${editBtn}
-            </div>
+            ${isGrid ? '' : prefixRow}
           </div>
+          ${isGrid ? prefixRow : ''}
           <button type="button" id="btn-ref-compact-${escapeHtml(fileName)}" class="btn-card-refresh btn-compact-refresh btn-icon" ${!isLiveQuota || pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="Refresh quota" aria-label="Refresh quota"><span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span></button>
-          <button type="button" class="btn-hide-emails btn-favorite btn-icon" data-filename="${escapeHtml(fileName)}" aria-pressed="${favorites.includes(fileName)}" aria-label="Favorite" title="Mark or unmark as favorite">${favorites.includes(fileName) ? '★' : '☆'}</button>
+          ${isGrid ? '' : favoriteButton}
         </header>
 
         <div class="card-body">
@@ -5642,17 +5764,20 @@ body {
           ${renderCardMiniActivity(file)}
         </div>
 
-        <footer class="card-footer">
-          <div class="toggle-wrap" title="Toggle credential active status">
+        <footer class="card-footer${isGrid ? ' grid-card-footer' : ''}">
+          ${isGrid ? gridResetBadge || resetCreditsPlaceholder : `<div class="toggle-wrap" title="Toggle credential active status">
             <span class="toggle-label">Enabled</span>
             <label class="toggle-switch">
               <input type="checkbox" id="toggle-status-${escapeHtml(fileName)}" ${!file.disabled ? 'checked' : ''} aria-label="Toggle credential active status">
               <span class="toggle-track"><span class="toggle-thumb"></span></span>
             </label>
-          </div>
+          </div>`}
+          <div class="card-footer-actions">
+          ${isGrid ? favoriteButton : ''}
           <button id="btn-ref-${escapeHtml(fileName)}" class="btn-card-refresh" aria-label="Refresh quota" ${!isLiveQuota ? 'disabled style="opacity:0.45; cursor:not-allowed;"' : pendingQuota.has(fileName) || quota.loading ? 'disabled' : ''} title="${!isLiveQuota ? 'No live quota endpoint for this provider' : 'Refresh quota for this credential'}">
-            <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? 'Refresh quota' : 'Static quota'}
+            <span class="refresh-icon ${quota.loading ? 'spinning' : ''}">${REFRESH_ICON}</span> ${isLiveQuota ? isGrid ? 'Refresh' : 'Refresh quota' : 'Static quota'}
           </button>
+          </div>
         </footer>
       </article>
     `;
@@ -5775,8 +5900,10 @@ body {
 
     const version = ++egoLoadVersion;
     const refresh = document.getElementById('ego-btn-refresh');
+    const refreshIcon = document.getElementById('ego-refresh-icon');
     if (egoLoadsPending++ === 0) egoRefreshWasDisabled = refresh.disabled;
     refresh.disabled = true;
+    refreshIcon.classList.add('spinning');
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
         fetchEgoSection(`/stats?range=${currentEgoRange}&provider=all`),
@@ -5850,7 +5977,10 @@ body {
       console.error('Failed to load Ego analytics:', e);
       showToast('Failed to load Ego analytics', true);
     } finally {
-      if (--egoLoadsPending === 0) refresh.disabled = egoRefreshWasDisabled;
+      if (--egoLoadsPending === 0) {
+        refresh.disabled = egoRefreshWasDisabled;
+        refreshIcon.classList.remove('spinning');
+      }
     }
   }
 
