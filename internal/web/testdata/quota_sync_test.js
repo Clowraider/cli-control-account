@@ -546,7 +546,10 @@ test('quota display changes presentation only across list and shared grid/compac
   assert.equal(row.percent, 8);
   assert.equal(dashboard.isLowQuotaAccount(quota), true);
   assert.equal(dashboard.renderListQuota({}, 'weekly'), '<td class="list-quota">—</td>');
-  for (const [percent, percentLabel] of [[100, 'Quota available'], [null, '—'], [undefined, 'Unavailable']]) {
+  Object.assign(row, { percent: 100, percentLabel: 'Quota available' });
+  assert.match(dashboard.renderCard(file), /0% used/);
+  assert.doesNotMatch(dashboard.renderCard(file), /class="meta-percent">Quota available/);
+  for (const [percent, percentLabel] of [[null, '—'], [undefined, 'Unavailable']]) {
     Object.assign(row, { percent, percentLabel });
     assert.ok(dashboard.renderCard(file).includes(percentLabel));
   }
@@ -554,6 +557,35 @@ test('quota display changes presentation only across list and shared grid/compac
   dashboard.setQuotaDisplay('remaining');
   assert.equal(dashboard.renderListQuota(quota, 'weekly'), remainingList);
   assert.equal(dashboard.renderCard(file), remainingCard);
+});
+
+test('quota display keeps known boundary labels numeric and special billing labels intact', () => {
+  const dashboard = loadDashboard();
+  const file = { name: 'quota-boundary.json', type: 'codex' };
+  const row = { label: 'Weekly', weekly: true, resetLabel: 'Refreshes in 7d 0h' };
+  dashboard.quotaStore[file.name] = { groups: [{ rows: [row] }] };
+  for (const mode of ['remaining', 'used']) {
+    dashboard.setQuotaDisplay(mode);
+    for (const percent of [0, 8, 100]) {
+      Object.assign(row, { percent, percentLabel: percent === 100 ? 'Quota available' : `${percent}% remaining` });
+      const value = mode === 'used' ? 100 - percent : percent;
+      assert.match(dashboard.renderCard(file), new RegExp(`class="meta-percent">${value}% ${mode}<`));
+      assert.match(dashboard.renderListQuota(dashboard.quotaStore[file.name], 'weekly'), new RegExp(`>${value}%<`));
+      assert.equal(row.percent, percent);
+    }
+    for (const [percent, percentLabel] of [[null, 'No data'], [undefined, 'Unavailable'], [NaN, 'No data'],
+      [50, '$5 / $10'], [100, 'Active (Pay-as-you-go)']]) {
+      Object.assign(row, { percent, percentLabel });
+      assert.ok(dashboard.renderCard(file).includes(`class="meta-percent">${percentLabel}<`));
+    }
+  }
+});
+
+test('shared quota meter layout keeps label and metadata on stable separate rows', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /\.meter-label\s*\{[^}]*flex-basis:\s*100%/);
+  assert.match(html, /\.meter-meta\s*\{[^}]*width:\s*100%/);
+  assert.match(html, /\.meter-meta\s*\{[^}]*flex-wrap:\s*nowrap/);
 });
 
 test('quota refresh controls reuse an accessible currentColor SVG in every layout', () => {
