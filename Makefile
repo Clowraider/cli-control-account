@@ -1,4 +1,4 @@
-.PHONY: all build test clean lint
+.PHONY: all build test clean lint docker-build
 
 BINARY_NAME=control-account-linux-amd64.so
 HEADER_NAME=control-account-linux-amd64.h
@@ -15,6 +15,14 @@ test:
 
 lint:
 	go vet ./...
+
+docker-build:
+	docker build --build-arg VERSION=$(VERSION) -t cli-control-account:$(VERSION) .
+	docker create --name ccase-extract cli-control-account:$(VERSION)
+	docker cp ccase-extract:/dist/$(BINARY_NAME) ./$(BINARY_NAME)
+	docker cp ccase-extract:/dist/$(HEADER_NAME) ./$(HEADER_NAME)
+	docker cp ccase-extract:/dist/control-account.so ./control-account.so
+	docker rm ccase-extract
 
 clean:
 	rm -f $(BINARY_NAME) $(HEADER_NAME) control-account.so control-account.h
