@@ -922,12 +922,27 @@ test('list window minima use Gemini while hover details span groups', () => {
   ] };
   assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 97);
   assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 80);
-  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97% · Claude and GPT Models: 43%');
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97%\nClaude and GPT Models: 43%');
   for (const empty of [null, {}, { groups: [{ rows: [{ percent: 0 }, { fiveHour: true, percent: null }, { fiveHour: true, percent: Infinity }] }] }]) {
     assert.equal(dashboard.lowestPercentOfKind(empty, 'fiveHour'), null);
     assert.equal(dashboard.lowestPercentOfKind(empty, 'weekly'), null);
     assert.equal(dashboard.quotaKindDetail(empty, 'fiveHour'), '');
   }
+});
+
+test('list quota hover adds the live reset countdown only for rows with a real future reset', () => {
+  const dashboard = loadDashboard();
+  const now = Date.now();
+  const quota = { groups: [
+    { title: 'Gemini Models', rows: [{ fiveHour: true, percent: 97, resetMs: now + (2 * 60 + 13) * 60000 + 30000, resetLabel: 'stale' }] },
+    { title: 'Claude and GPT Models', rows: [{ fiveHour: true, percent: 43, resetMs: now + (4 * 1440 + 3 * 60) * 60000 + 30000 }] },
+    { title: 'No Reset', rows: [{ fiveHour: true, percent: 50, resetMs: null, resetLabel: 'Refreshes in 5h 0m' }] },
+    { title: 'Past Reset', rows: [{ fiveHour: true, percent: 60, resetMs: now - 60000 }] },
+  ] };
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'),
+    'Gemini Models: 97% · Refreshes in 2h 13m\nClaude and GPT Models: 43% · Refreshes in 4d 3h\nNo Reset: 50%\nPast Reset: 60%');
+  assert.match(dashboard.renderListQuota(quota, 'fiveHour'), /title="Gemini Models: 97% · Refreshes in 2h 13m\nClaude and GPT Models: 43% · Refreshes in 4d 3h\nNo Reset: 50%\nPast Reset: 60%"/);
+  assert.match(dashboard.renderListQuota(quota, 'fiveHour'), />97%<\/span>/);
 });
 
 test('list quota and low quota filtering prefer Gemini even when upstream order differs', () => {
@@ -2120,4 +2135,45 @@ test('Quota alone uses the requested canvas background while Ego keeps the base 
     dashboard.switchView('quota');
     assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), true);
   }
+});
+
+test('Ego shows approximate TPS only in Top Models, with a dash when no eligible data exists', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const headOf = table => {
+    const head = html.split(`id="ego-tbody-${table}"`)[0];
+    return head.slice(head.lastIndexOf('<thead>'));
+  };
+  assert.match(headOf('models'), /<th>Avg Latency<\/th>\s*<th[^>]*title="[^"]*approximate[^"]*"[^>]*>Avg TPS<\/th>/i,
+    'Top Models has an Avg TPS column with an explanatory tooltip next to Avg Latency');
+  assert.doesNotMatch(headOf('providers'), /TPS/, 'provider table has no TPS column');
+  assert.doesNotMatch(html, /id="ego-kpi-ttft"|id="ego-kpi-tps"/, 'Average Latency card has no TTFT/TPS sub-line');
+
+  let withTps = true;
+  const stats = () => ({ total_requests: 3, total_success: 3, total_failed: 0, total_tokens: 900, prompt_tokens: 100,
+    completion_tokens: 800, cached_tokens: 0, reasoning_tokens: 0, avg_latency_ms: 4000, min_latency_ms: 3000, max_latency_ms: 5000,
+    avg_ttft_ms: withTps ? 1166.7 : 0, avg_tps: withTps ? 61.5 : 0, tps_requests: withTps ? 3 : 0 });
+  const dashboard = loadDashboard(async url => {
+    const endpoint = String(url).split('/ego/')[1].split('?')[0];
+    const data = {
+      stats: stats(), settings: { total_records: 3 }, accounts: [], timeline: [],
+      providers: [{ provider: 'codex', total_requests: 3, total_tokens: 900, avg_latency_ms: 4000, success_rate: 100,
+        avg_tps: withTps ? 50 : 0, tps_requests: withTps ? 2 : 0 }],
+      models: [{ model: 'gpt-5', provider: 'codex', total_requests: 3, total_tokens: 900, avg_latency_ms: 4000, is_priced: false,
+        avg_tps: withTps ? 50 : 0, tps_requests: withTps ? 2 : 0 }],
+    };
+    return { ok: true, json: async () => data[endpoint] };
+  });
+  dashboard.setEgoRange('all');
+  await dashboard.loadEgoOverview();
+  assert.equal(dashboard.getElement('ego-kpi-latency').textContent, '4000ms');
+  assert.match(dashboard.getElement('ego-tbody-models').innerHTML, />50\.0 tok\/s<\/td>\s*<\/tr>/);
+  const providersBody = dashboard.getElement('ego-tbody-providers').innerHTML;
+  assert.doesNotMatch(providersBody, /tok\/s/);
+  assert.match(providersBody, />4000ms<\/td>\s*<td><span class="plan-badge"[^>]*>100%<\/span><\/td>/, 'provider latency is followed by success rate');
+
+  withTps = false;
+  await dashboard.loadEgoOverview();
+  const modelsBody = dashboard.getElement('ego-tbody-models').innerHTML;
+  assert.doesNotMatch(modelsBody, /tok\/s/);
+  assert.match(modelsBody, /<td class="ego-col-mono"[^>]*>—<\/td>\s*<\/tr>/);
 });

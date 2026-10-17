@@ -1,0 +1,13 @@
+.git
+.codegraph
+.atl
+*.db
+*.db-shm
+*.db-wal
+*.so
+*.h
+*.test
+coverage.out
+coverage.html
+Task-Manager-Portable.html
+img/

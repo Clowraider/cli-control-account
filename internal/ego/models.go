@@ -29,6 +29,7 @@ type RawUsageRecord struct {
 	ReasoningEffort string         `json:"ReasoningEffort"`
 	ServiceTier     string         `json:"ServiceTier"`
 	Generate        bool           `json:"Generate"`
+	Stream          bool           `json:"Stream"`
 	RequestedAt     time.Time      `json:"RequestedAt"`
 	Latency         int64          `json:"Latency"` // Nanoseconds
 	TTFT            int64          `json:"TTFT"`    // Nanoseconds
@@ -51,6 +52,12 @@ type EgoEvent struct {
 	TotalTokens         int64  `json:"total_tokens"`
 	LatencyMs           int64  `json:"latency_ms"`
 	Status              string `json:"status"` // "success" or "failed"
+	TTFTMs              int64  `json:"ttft_ms"`
+	Stream              bool   `json:"stream"`
+	// GenTokens and GenMs are the generated tokens and generation time (latency minus
+	// TTFT) of a TPS-eligible event; both are zero when the event is not eligible.
+	GenTokens int64 `json:"gen_tokens"`
+	GenMs     int64 `json:"gen_ms"`
 }
 
 // SummaryStats contains aggregated metrics for a specified time window.
@@ -71,6 +78,9 @@ type SummaryStats struct {
 	AvgLatencyMs        float64 `json:"avg_latency_ms"`
 	MinLatencyMs        int64   `json:"min_latency_ms"`
 	MaxLatencyMs        int64   `json:"max_latency_ms"`
+	AvgTTFTMs           float64 `json:"avg_ttft_ms"`
+	AvgTPS              float64 `json:"avg_tps"`
+	TPSRequests         int64   `json:"tps_requests"`
 	EarliestTime        int64   `json:"earliest_time"`
 	LatestTime          int64   `json:"latest_time"`
 }
@@ -97,6 +107,8 @@ type ProviderRanking struct {
 	CompletionTokens int64   `json:"completion_tokens"`
 	AvgLatencyMs     float64 `json:"avg_latency_ms"`
 	SuccessRate      float64 `json:"success_rate"`
+	AvgTPS           float64 `json:"avg_tps"`
+	TPSRequests      int64   `json:"tps_requests"`
 }
 
 // ModelRanking aggregates token metrics per model.
@@ -110,6 +122,8 @@ type ModelRanking struct {
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 	AvgLatencyMs     float64 `json:"avg_latency_ms"`
 	IsPriced         bool    `json:"is_priced"`
+	AvgTPS           float64 `json:"avg_tps"`
+	TPSRequests      int64   `json:"tps_requests"`
 }
 
 // ModelPricing holds the retail pricing rates per token in USD for a model.

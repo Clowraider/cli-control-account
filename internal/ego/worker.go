@@ -218,7 +218,17 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 		model = "unknown"
 	}
 
+	ttftMs := rec.TTFT / 1_000_000
+	if ttftMs < 0 {
+		ttftMs = 0
+	}
+	genTokens, genMs := tpsSample(rec, provider)
+
 	return EgoEvent{
+		TTFTMs:              ttftMs,
+		Stream:              rec.Stream,
+		GenTokens:           genTokens,
+		GenMs:               genMs,
 		Timestamp:           ts,
 		Provider:            provider,
 		Model:               model,
@@ -232,6 +242,31 @@ func transformToEgoEvent(rec RawUsageRecord) EgoEvent {
 		LatencyMs:           latencyMs,
 		Status:              status,
 	}
+}
+
+// minTPSTokens is the smallest generated-token count used for TPS; shorter
+// responses produce unstable rates.
+const minTPSTokens = 20
+
+// tpsSample returns the generated tokens and generation time in milliseconds of a
+// TPS-eligible usage record, or zeros when the record is not eligible. Only
+// successful streaming records with TTFT inside the latency qualify. Generation
+// time is latency minus TTFT, so the rate is approximate: CLIProxyAPI starts the
+// TTFT clock just before the upstream send and, for several providers, stops it
+// at the first response byte rather than the first token.
+func tpsSample(rec RawUsageRecord, provider string) (int64, int64) {
+	if rec.Failed || !rec.Stream || rec.TTFT <= 0 || rec.Latency <= rec.TTFT {
+		return 0, 0
+	}
+	generated := rec.Detail.OutputTokens
+	if ResolveTokenSemantics(provider, rec.ExecutorType) == SemanticsSeparateReasoning {
+		generated += rec.Detail.ReasoningTokens
+	}
+	genMs := (rec.Latency - rec.TTFT) / 1_000_000
+	if generated < minTPSTokens || genMs <= 0 {
+		return 0, 0
+	}
+	return generated, genMs
 }
 
 func (w *Worker) flushLoop() {

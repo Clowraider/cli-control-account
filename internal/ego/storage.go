@@ -115,7 +115,11 @@ func (s *Storage) initSchema() error {
 		cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
 		total_tokens INTEGER NOT NULL DEFAULT 0,
 		latency_ms INTEGER NOT NULL DEFAULT 0,
-		status TEXT NOT NULL
+		status TEXT NOT NULL,
+		ttft_ms INTEGER NOT NULL DEFAULT 0,
+		stream INTEGER NOT NULL DEFAULT 0,
+		gen_tokens INTEGER NOT NULL DEFAULT 0,
+		gen_ms INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_ego_timestamp ON ego_events(timestamp);
@@ -146,6 +150,11 @@ func (s *Storage) initSchema() error {
 	// Auto-migrate ego_events table if cache_creation_tokens column doesn't exist
 	_, _ = s.db.Exec(`ALTER TABLE ego_events ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE ego_pricing ADD COLUMN cache_creation_input_token_cost REAL NOT NULL DEFAULT 0.0`)
+	// TPS/TTFT columns (added after the initial release); existing rows default to 0,
+	// which marks them as not TPS-eligible.
+	for _, column := range []string{"ttft_ms", "stream", "gen_tokens", "gen_ms"} {
+		_, _ = s.db.Exec(`ALTER TABLE ego_events ADD COLUMN ` + column + ` INTEGER NOT NULL DEFAULT 0`)
+	}
 	return nil
 }
 
@@ -345,8 +354,8 @@ func (s *Storage) InsertBatch(events []EgoEvent) error {
 		INSERT INTO ego_events (
 			timestamp, provider, model, account,
 			prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_creation_tokens,
-			total_tokens, latency_ms, status
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			total_tokens, latency_ms, status, ttft_ms, stream, gen_tokens, gen_ms
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch insert: %w", err)
@@ -357,7 +366,7 @@ func (s *Storage) InsertBatch(events []EgoEvent) error {
 		_, err := stmt.Exec(
 			e.Timestamp, e.Provider, e.Model, e.Account,
 			e.PromptTokens, e.CompletionTokens, e.ReasoningTokens, e.CachedTokens, e.CacheCreationTokens,
-			e.TotalTokens, e.LatencyMs, e.Status,
+			e.TotalTokens, e.LatencyMs, e.Status, e.TTFTMs, e.Stream, e.GenTokens, e.GenMs,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to exec event insert: %w", err)
@@ -365,6 +374,23 @@ func (s *Storage) InsertBatch(events []EgoEvent) error {
 	}
 
 	return tx.Commit()
+}
+
+// tpsColumns aggregates the TPS-eligible samples of a group: generated tokens,
+// generation milliseconds, eligible count and average TTFT of eligible events.
+const tpsColumns = `
+			COALESCE(SUM(gen_tokens), 0),
+			COALESCE(SUM(gen_ms), 0),
+			COALESCE(SUM(CASE WHEN gen_ms > 0 THEN 1 ELSE 0 END), 0),
+			COALESCE(AVG(CASE WHEN gen_ms > 0 THEN ttft_ms END), 0.0)`
+
+// weightedTPS returns total generated tokens per generation second, rounded to one
+// decimal, or 0 when there is no eligible generation time.
+func weightedTPS(genTokens, genMs int64) float64 {
+	if genMs <= 0 {
+		return 0
+	}
+	return math.Round(float64(genTokens)*1000/float64(genMs)*10) / 10
 }
 
 func calculateMinTimestamp(timeRange string) int64 {
@@ -410,7 +436,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 			COALESCE(MIN(latency_ms), 0),
 			COALESCE(MAX(latency_ms), 0),
 			COALESCE(MIN(timestamp), 0),
-			COALESCE(MAX(timestamp), 0)
+			COALESCE(MAX(timestamp), 0),` + tpsColumns + `
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
@@ -421,6 +447,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 	}
 
 	var stats SummaryStats
+	var genTokens, genMs int64
 	row := s.db.QueryRow(query, args...)
 	err := row.Scan(
 		&stats.TotalRequests,
@@ -437,10 +464,16 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		&stats.MaxLatencyMs,
 		&stats.EarliestTime,
 		&stats.LatestTime,
+		&genTokens,
+		&genMs,
+		&stats.TPSRequests,
+		&stats.AvgTTFTMs,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query summary stats: %w", err)
 	}
+	stats.AvgTPS = weightedTPS(genTokens, genMs)
+	stats.AvgTTFTMs = math.Round(stats.AvgTTFTMs*10) / 10
 
 	stats.AvgLatencyMs = math.Round(stats.AvgLatencyMs*10) / 10
 	if stats.TotalRequests > 0 {
@@ -583,7 +616,10 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 			COALESCE(SUM(total_tokens), 0),
 			COALESCE(SUM(prompt_tokens), 0),
 			COALESCE(SUM(completion_tokens), 0),
-			COALESCE(AVG(latency_ms), 0.0)
+			COALESCE(AVG(latency_ms), 0.0),
+			COALESCE(SUM(gen_tokens), 0),
+			COALESCE(SUM(gen_ms), 0),
+			COALESCE(SUM(CASE WHEN gen_ms > 0 THEN 1 ELSE 0 END), 0)
 		FROM ego_events
 		WHERE timestamp >= ?
 		GROUP BY provider
@@ -598,7 +634,7 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 	rankings := make([]ProviderRanking, 0)
 	for rows.Next() {
 		var r ProviderRanking
-		var successCount int64
+		var successCount, genTokens, genMs int64
 		if err := rows.Scan(
 			&r.Provider,
 			&r.TotalRequests,
@@ -607,9 +643,13 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 			&r.PromptTokens,
 			&r.CompletionTokens,
 			&r.AvgLatencyMs,
+			&genTokens,
+			&genMs,
+			&r.TPSRequests,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan provider ranking: %w", err)
 		}
+		r.AvgTPS = weightedTPS(genTokens, genMs)
 		r.AvgLatencyMs = math.Round(r.AvgLatencyMs*10) / 10
 		if r.TotalRequests > 0 {
 			r.SuccessRate = math.Round((float64(successCount)/float64(r.TotalRequests))*1000) / 10
@@ -640,7 +680,10 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 			COALESCE(SUM(reasoning_tokens), 0),
 			COALESCE(SUM(cached_tokens), 0),
 			COALESCE(SUM(cache_creation_tokens), 0),
-			COALESCE(AVG(latency_ms), 0.0)
+			COALESCE(AVG(latency_ms), 0.0),
+			COALESCE(SUM(gen_tokens), 0),
+			COALESCE(SUM(gen_ms), 0),
+			COALESCE(SUM(CASE WHEN gen_ms > 0 THEN 1 ELSE 0 END), 0)
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
@@ -660,7 +703,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 	rankings := make([]ModelRanking, 0)
 	for rows.Next() {
 		var r ModelRanking
-		var reasoningTokens, cachedTokens, cacheCreationTokens int64
+		var reasoningTokens, cachedTokens, cacheCreationTokens, genTokens, genMs int64
 		if err := rows.Scan(
 			&r.Model,
 			&r.Provider,
@@ -672,9 +715,13 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 			&cachedTokens,
 			&cacheCreationTokens,
 			&r.AvgLatencyMs,
+			&genTokens,
+			&genMs,
+			&r.TPSRequests,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan model ranking: %w", err)
 		}
+		r.AvgTPS = weightedTPS(genTokens, genMs)
 		r.AvgLatencyMs = math.Round(r.AvgLatencyMs*10) / 10
 
 		pricing, matched := FindModelPricing(s.pricingCache, r.Model)

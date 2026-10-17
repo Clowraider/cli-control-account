@@ -105,6 +105,7 @@ Access the dashboards in your browser:
   - **Gemini / Antigravity (`separateReasoning`)**: Prompt input includes cache, reasoning is additive to output.
   - **OpenAI / Codex (`subset`)**: Prompt input includes cache, reasoning is a subset of completion tokens.
 - **Embedded Pricing Database**: Integrated offline pricing catalog covering ~4,300 models to calculate retail cost equivalence in $ USD against flat subscription rates.
+- **Approximate TPS**: The Top Models table shows `Avg TPS` per model and provider, next to `Avg Latency`. TPS is not shown per provider or in the summary cards because those totals mix models. Only successful streaming requests with a TTFT below their latency and at least 20 generated tokens are counted. TPS = generated tokens / (latency - TTFT), weighted across requests; generated tokens add reasoning only for `separateReasoning` providers. The value is approximate: CLIProxyAPI starts the TTFT clock just before the upstream call and, for several providers, stops it at the first response byte rather than the first token. Compare one model over time, not across providers. Events recorded before this feature have no TTFT and show `—`.
 - **Multi-Resolution Timelines**: 5-minute buckets for 1h view; hourly and daily buckets for 24h, 7d, 30d, and All-time views.
 - **Storage & Privacy Hardening**: Local SQLite database stored at `~/.cliproxy/ego.db` with restricted file permissions (`0700` directory, `0600` database file). Asynchronous non-blocking event worker and authenticated management endpoints (`/v0/management/ego/*`).
 
