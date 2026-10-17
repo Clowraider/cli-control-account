@@ -2414,11 +2414,14 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     for (const group of quota?.groups || []) {
       for (const row of group.rows || []) {
         if (row[kind] === true && Number.isFinite(row.percent)) {
-          details.push(`${group.title || group.name || 'Models'}: ${displayPercent(row.percent)}%`);
+          // Countdown only from a real reset time, recomputed now; never from fallback labels.
+          const reset = Number.isFinite(row.resetMs) ? formatResetInfo(row.resetMs, null).label : '';
+          const suffix = reset.startsWith('Refreshes in ') ? ` · ${reset}` : '';
+          details.push(`${group.title || group.name || 'Models'}: ${displayPercent(row.percent)}%${suffix}`);
         }
       }
     }
-    return details.join(' · ');
+    return details.join('\n');
   }
 
   function lowestPercentOfKind(quota, kind) {

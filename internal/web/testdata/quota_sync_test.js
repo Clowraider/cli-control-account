@@ -922,12 +922,27 @@ test('list window minima use Gemini while hover details span groups', () => {
   ] };
   assert.equal(dashboard.lowestPercentOfKind(quota, 'fiveHour'), 97);
   assert.equal(dashboard.lowestPercentOfKind(quota, 'weekly'), 80);
-  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97% · Claude and GPT Models: 43%');
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'), 'Gemini Models: 97%\nClaude and GPT Models: 43%');
   for (const empty of [null, {}, { groups: [{ rows: [{ percent: 0 }, { fiveHour: true, percent: null }, { fiveHour: true, percent: Infinity }] }] }]) {
     assert.equal(dashboard.lowestPercentOfKind(empty, 'fiveHour'), null);
     assert.equal(dashboard.lowestPercentOfKind(empty, 'weekly'), null);
     assert.equal(dashboard.quotaKindDetail(empty, 'fiveHour'), '');
   }
+});
+
+test('list quota hover adds the live reset countdown only for rows with a real future reset', () => {
+  const dashboard = loadDashboard();
+  const now = Date.now();
+  const quota = { groups: [
+    { title: 'Gemini Models', rows: [{ fiveHour: true, percent: 97, resetMs: now + (2 * 60 + 13) * 60000 + 30000, resetLabel: 'stale' }] },
+    { title: 'Claude and GPT Models', rows: [{ fiveHour: true, percent: 43, resetMs: now + (4 * 1440 + 3 * 60) * 60000 + 30000 }] },
+    { title: 'No Reset', rows: [{ fiveHour: true, percent: 50, resetMs: null, resetLabel: 'Refreshes in 5h 0m' }] },
+    { title: 'Past Reset', rows: [{ fiveHour: true, percent: 60, resetMs: now - 60000 }] },
+  ] };
+  assert.equal(dashboard.quotaKindDetail(quota, 'fiveHour'),
+    'Gemini Models: 97% · Refreshes in 2h 13m\nClaude and GPT Models: 43% · Refreshes in 4d 3h\nNo Reset: 50%\nPast Reset: 60%');
+  assert.match(dashboard.renderListQuota(quota, 'fiveHour'), /title="Gemini Models: 97% · Refreshes in 2h 13m\nClaude and GPT Models: 43% · Refreshes in 4d 3h\nNo Reset: 50%\nPast Reset: 60%"/);
+  assert.match(dashboard.renderListQuota(quota, 'fiveHour'), />97%<\/span>/);
 });
 
 test('list quota and low quota filtering prefer Gemini even when upstream order differs', () => {
