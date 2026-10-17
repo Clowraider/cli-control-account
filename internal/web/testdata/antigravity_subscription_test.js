@@ -125,6 +125,31 @@ test('fetchAntigravityTierSummary proxies loadCodeAssist through management api-
   assert.deepEqual({ ...result }, { plan: 'free', tierId: 'free-tier', tierName: null });
 });
 
+test('Antigravity quota and subscription requests send the Antigravity Hub user agent', async () => {
+  const proxyRequests = [];
+  const dashboard = loadDashboard(async (endpoint, options) => {
+    proxyRequests.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      json: async () => ({
+        status_code: 200,
+        body: JSON.stringify({ groups: [{ displayName: 'Gemini Models', buckets: [{ displayName: 'Weekly', remainingFraction: 1 }] }] }),
+      }),
+    };
+  });
+
+  await dashboard.fetchAntigravityQuota({ name: 'credential.json', project_id: 'project-1' }, 'credential-7');
+  const quotaRequest = proxyRequests.find(request => request.url.endsWith(':retrieveUserQuotaSummary'));
+  const subscriptionRequest = proxyRequests.find(request => request.url.endsWith(':loadCodeAssist'));
+  // Cloud Code omits the Gemini group for clients older than Antigravity Hub 2.23.0.
+  assert.equal(quotaRequest.header['User-Agent'], 'antigravity/hub/2.23.0 darwin/arm64');
+  assert.equal(subscriptionRequest.header['User-Agent'], 'antigravity/hub/2.23.0 darwin/arm64');
+  assert.equal(quotaRequest.header.Authorization, 'Bearer $TOKEN$');
+  assert.equal(quotaRequest.header['Content-Type'], 'application/json');
+  assert.deepEqual(JSON.parse(quotaRequest.data), { project: 'project-1' });
+  assert.equal(dashboard.quotaStore['credential.json'].groups[0].title, 'GEMINI MODELS');
+});
+
 test('Antigravity quota path completes when subscription lookup fails', async () => {
   let callCount = 0;
   const dashboard = loadDashboard(async () => {
