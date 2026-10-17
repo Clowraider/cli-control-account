@@ -2261,10 +2261,11 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
                 <th>Total Tokens</th>
                 <th>Est. Value</th>
                 <th>Avg Latency</th>
+                <th title="Approximate tokens per second of streaming requests; compare within one model, not across providers.">Avg TPS</th>
               </tr>
             </thead>
             <tbody id="ego-tbody-models">
-              <tr><td colspan="6" style="text-align:center; padding:20px;">Cargando datos...</td></tr>
+              <tr><td colspan="7" style="text-align:center; padding:20px;">Cargando datos...</td></tr>
             </tbody>
           </table>
         </div>
@@ -6380,6 +6381,11 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     }
   }
 
+  // Approximate TPS label; rows without TPS-eligible requests show a dash, never 0.
+  function formatEgoTps(row) {
+    return row && row.tps_requests > 0 ? `${Number(row.avg_tps).toFixed(1)} tok/s` : '—';
+  }
+
   function renderEgoProvidersTable(providers) {
     const tbody = document.getElementById('ego-tbody-providers');
     if (!tbody) return;
@@ -6405,7 +6411,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     if (!tbody) return;
 
     if (!models || models.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-quaternary);">No model statistics recorded yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-quaternary);">No model statistics recorded yet.</td></tr>';
       return;
     }
 
@@ -6417,6 +6423,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
         <td class="ego-col-mono" style="color:var(--brand-claude);">${formatCompactTokens(m.total_tokens)}</td>
         <td class="ego-col-mono" style="color:var(--meter-text-green); font-weight:600;">${m.is_priced ? formatUSD(m.estimated_cost_usd) : '<span style="color:var(--text-quaternary);" title="Tarifa retail no catalogada">—</span>'}</td>
         <td class="ego-col-mono">${Math.round(m.avg_latency_ms)}ms</td>
+        <td class="ego-col-mono">${formatEgoTps(m)}</td>
       </tr>
     `).join('');
   }

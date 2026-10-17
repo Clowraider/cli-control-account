@@ -498,3 +498,75 @@ func TestWorker_StopFlushesQueuedEventsAndIsIdempotent(t *testing.T) {
 		t.Fatalf("expected 10 flushed events after Stop, got %d", n)
 	}
 }
+
+func TestTransformToEgoEvent_TPSFields(t *testing.T) {
+	ms := int64(time.Millisecond)
+	tests := []struct {
+		name          string
+		provider      string
+		stream        bool
+		failed        bool
+		latencyMs     int64
+		ttftMs        int64
+		detail        RawUsageDetail
+		wantTTFTMs    int64
+		wantGenTokens int64
+		wantGenMs     int64
+	}{
+		{name: "subset streaming request counts output only", provider: "codex", stream: true, latencyMs: 10000, ttftMs: 2000,
+			detail: RawUsageDetail{OutputTokens: 400, ReasoningTokens: 100}, wantTTFTMs: 2000, wantGenTokens: 400, wantGenMs: 8000},
+		{name: "claude output already includes thinking", provider: "claude", stream: true, latencyMs: 5000, ttftMs: 1000,
+			detail: RawUsageDetail{OutputTokens: 300, ReasoningTokens: 50}, wantTTFTMs: 1000, wantGenTokens: 300, wantGenMs: 4000},
+		{name: "gemini family adds separate reasoning", provider: "antigravity", stream: true, latencyMs: 6000, ttftMs: 1000,
+			detail: RawUsageDetail{OutputTokens: 300, ReasoningTokens: 200}, wantTTFTMs: 1000, wantGenTokens: 500, wantGenMs: 5000},
+		{name: "non-streaming request is not eligible", provider: "codex", stream: false, latencyMs: 10000, ttftMs: 2000,
+			detail: RawUsageDetail{OutputTokens: 400}, wantTTFTMs: 2000},
+		{name: "failed request is not eligible", provider: "codex", stream: true, failed: true, latencyMs: 10000, ttftMs: 2000,
+			detail: RawUsageDetail{OutputTokens: 400}, wantTTFTMs: 2000},
+		{name: "missing TTFT is not eligible", provider: "codex", stream: true, latencyMs: 10000, ttftMs: 0,
+			detail: RawUsageDetail{OutputTokens: 400}, wantTTFTMs: 0},
+		{name: "TTFT not below latency is not eligible", provider: "codex", stream: true, latencyMs: 2000, ttftMs: 2000,
+			detail: RawUsageDetail{OutputTokens: 400}, wantTTFTMs: 2000},
+		{name: "fewer than 20 generated tokens is not eligible", provider: "codex", stream: true, latencyMs: 3000, ttftMs: 1000,
+			detail: RawUsageDetail{OutputTokens: 19}, wantTTFTMs: 1000},
+		{name: "exactly 20 generated tokens is eligible", provider: "codex", stream: true, latencyMs: 3000, ttftMs: 1000,
+			detail: RawUsageDetail{OutputTokens: 20}, wantTTFTMs: 1000, wantGenTokens: 20, wantGenMs: 2000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := transformToEgoEvent(RawUsageRecord{
+				Provider:    tt.provider,
+				Model:       "test-model",
+				AuthID:      "test-account",
+				RequestedAt: time.Now(),
+				Stream:      tt.stream,
+				Failed:      tt.failed,
+				Latency:     tt.latencyMs * ms,
+				TTFT:        tt.ttftMs * ms,
+				Detail:      tt.detail,
+			})
+			if event.TTFTMs != tt.wantTTFTMs {
+				t.Errorf("TTFTMs = %d, want %d", event.TTFTMs, tt.wantTTFTMs)
+			}
+			if event.Stream != tt.stream {
+				t.Errorf("Stream = %v, want %v", event.Stream, tt.stream)
+			}
+			if event.GenTokens != tt.wantGenTokens || event.GenMs != tt.wantGenMs {
+				t.Errorf("GenTokens/GenMs = %d/%d, want %d/%d", event.GenTokens, event.GenMs, tt.wantGenTokens, tt.wantGenMs)
+			}
+		})
+	}
+}
+
+func TestWorker_RecordParsesStreamAndTTFTFromHostPayload(t *testing.T) {
+	var rec RawUsageRecord
+	payload := []byte(`{"Provider":"codex","Model":"gpt-5","AuthID":"a","Stream":true,"Latency":10000000000,"TTFT":2000000000,"Detail":{"OutputTokens":400}}`)
+	if err := json.Unmarshal(payload, &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	event := transformToEgoEvent(rec)
+	if !event.Stream || event.TTFTMs != 2000 || event.GenTokens != 400 || event.GenMs != 8000 {
+		t.Fatalf("unexpected event from host payload: %+v", event)
+	}
+}
