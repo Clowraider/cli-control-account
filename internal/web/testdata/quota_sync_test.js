@@ -2121,3 +2121,44 @@ test('Quota alone uses the requested canvas background while Ego keeps the base 
     assert.equal(dashboard.getElement('nav-btn-quota').classList.contains('active'), true);
   }
 });
+
+test('Ego shows approximate TPS only in Top Models, with a dash when no eligible data exists', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const headOf = table => {
+    const head = html.split(`id="ego-tbody-${table}"`)[0];
+    return head.slice(head.lastIndexOf('<thead>'));
+  };
+  assert.match(headOf('models'), /<th>Avg Latency<\/th>\s*<th[^>]*title="[^"]*approximate[^"]*"[^>]*>Avg TPS<\/th>/i,
+    'Top Models has an Avg TPS column with an explanatory tooltip next to Avg Latency');
+  assert.doesNotMatch(headOf('providers'), /TPS/, 'provider table has no TPS column');
+  assert.doesNotMatch(html, /id="ego-kpi-ttft"|id="ego-kpi-tps"/, 'Average Latency card has no TTFT/TPS sub-line');
+
+  let withTps = true;
+  const stats = () => ({ total_requests: 3, total_success: 3, total_failed: 0, total_tokens: 900, prompt_tokens: 100,
+    completion_tokens: 800, cached_tokens: 0, reasoning_tokens: 0, avg_latency_ms: 4000, min_latency_ms: 3000, max_latency_ms: 5000,
+    avg_ttft_ms: withTps ? 1166.7 : 0, avg_tps: withTps ? 61.5 : 0, tps_requests: withTps ? 3 : 0 });
+  const dashboard = loadDashboard(async url => {
+    const endpoint = String(url).split('/ego/')[1].split('?')[0];
+    const data = {
+      stats: stats(), settings: { total_records: 3 }, accounts: [], timeline: [],
+      providers: [{ provider: 'codex', total_requests: 3, total_tokens: 900, avg_latency_ms: 4000, success_rate: 100,
+        avg_tps: withTps ? 50 : 0, tps_requests: withTps ? 2 : 0 }],
+      models: [{ model: 'gpt-5', provider: 'codex', total_requests: 3, total_tokens: 900, avg_latency_ms: 4000, is_priced: false,
+        avg_tps: withTps ? 50 : 0, tps_requests: withTps ? 2 : 0 }],
+    };
+    return { ok: true, json: async () => data[endpoint] };
+  });
+  dashboard.setEgoRange('all');
+  await dashboard.loadEgoOverview();
+  assert.equal(dashboard.getElement('ego-kpi-latency').textContent, '4000ms');
+  assert.match(dashboard.getElement('ego-tbody-models').innerHTML, />50\.0 tok\/s<\/td>\s*<\/tr>/);
+  const providersBody = dashboard.getElement('ego-tbody-providers').innerHTML;
+  assert.doesNotMatch(providersBody, /tok\/s/);
+  assert.match(providersBody, />4000ms<\/td>\s*<td><span class="plan-badge"[^>]*>100%<\/span><\/td>/, 'provider latency is followed by success rate');
+
+  withTps = false;
+  await dashboard.loadEgoOverview();
+  const modelsBody = dashboard.getElement('ego-tbody-models').innerHTML;
+  assert.doesNotMatch(modelsBody, /tok\/s/);
+  assert.match(modelsBody, /<td class="ego-col-mono"[^>]*>—<\/td>\s*<\/tr>/);
+});

@@ -1,6 +1,7 @@
 package ego
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -525,5 +526,138 @@ func TestStorage_IsPricedFlagInModelRankings(t *testing.T) {
 				t.Errorf("expected unlisted custom model to have EstimatedCostUSD = 0, got %f", r.EstimatedCostUSD)
 			}
 		}
+	}
+}
+
+func TestStorage_MigratesOldEventsTableForTPSColumns(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "old_ego.db")
+	old, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open old db: %v", err)
+	}
+	if _, err := old.Exec(`CREATE TABLE ego_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, provider TEXT NOT NULL,
+		model TEXT NOT NULL, account TEXT NOT NULL, prompt_tokens INTEGER NOT NULL DEFAULT 0,
+		completion_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+		cached_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0,
+		latency_ms INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL);
+		INSERT INTO ego_events (timestamp, provider, model, account, completion_tokens, total_tokens, latency_ms, status)
+		VALUES (1, 'codex', 'gpt-5', 'old-acc', 77, 177, 900, 'success');`); err != nil {
+		t.Fatalf("seed old schema: %v", err)
+	}
+	_ = old.Close()
+
+	storage, err := OpenStorage(dbPath)
+	if err != nil {
+		t.Fatalf("OpenStorage on old schema: %v", err)
+	}
+	defer storage.Close()
+
+	var completion, total, latency, ttft, stream, genTokens, genMs int64
+	row := storage.db.QueryRow(`SELECT completion_tokens, total_tokens, latency_ms, ttft_ms, stream, gen_tokens, gen_ms FROM ego_events WHERE account = 'old-acc'`)
+	if err := row.Scan(&completion, &total, &latency, &ttft, &stream, &genTokens, &genMs); err != nil {
+		t.Fatalf("old row after migration: %v", err)
+	}
+	if completion != 77 || total != 177 || latency != 900 || ttft != 0 || stream != 0 || genTokens != 0 || genMs != 0 {
+		t.Fatalf("old row changed or defaults wrong: %d %d %d %d %d %d %d", completion, total, latency, ttft, stream, genTokens, genMs)
+	}
+
+	if err := storage.InsertBatch([]EgoEvent{{Timestamp: 2, Provider: "codex", Model: "gpt-5", Account: "new-acc",
+		CompletionTokens: 400, TotalTokens: 400, LatencyMs: 10000, Status: "success",
+		TTFTMs: 2000, Stream: true, GenTokens: 400, GenMs: 8000}}); err != nil {
+		t.Fatalf("insert new event: %v", err)
+	}
+	row = storage.db.QueryRow(`SELECT ttft_ms, stream, gen_tokens, gen_ms FROM ego_events WHERE account = 'new-acc'`)
+	if err := row.Scan(&ttft, &stream, &genTokens, &genMs); err != nil {
+		t.Fatalf("new row: %v", err)
+	}
+	if ttft != 2000 || stream != 1 || genTokens != 400 || genMs != 8000 {
+		t.Fatalf("new TPS fields not stored: %d %d %d %d", ttft, stream, genTokens, genMs)
+	}
+}
+
+func TestStorage_TPSAndTTFTAggregates(t *testing.T) {
+	storage, err := OpenStorage(filepath.Join(t.TempDir(), "tps.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer storage.Close()
+
+	now := time.Now().UnixMilli()
+	ev := func(provider, model string, ttft int64, stream bool, genTokens, genMs int64) EgoEvent {
+		return EgoEvent{Timestamp: now - 1000, Provider: provider, Model: model, Account: "acc",
+			CompletionTokens: genTokens, TotalTokens: genTokens, LatencyMs: ttft + genMs, Status: "success",
+			TTFTMs: ttft, Stream: stream, GenTokens: genTokens, GenMs: genMs}
+	}
+	if err := storage.InsertBatch([]EgoEvent{
+		ev("codex", "gpt-5", 2000, true, 400, 8000),
+		ev("codex", "gpt-5", 1000, true, 100, 2000),
+		ev("codex", "gpt-5", 5000, false, 0, 0), // not eligible: must not affect TPS or TTFT
+		ev("gemini", "gemini-2.5-pro", 500, true, 300, 3000),
+	}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	summary, err := storage.GetSummary("24h", "")
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	// (400+100+300) tokens / (8+2+3) s = 61.538 -> 61.5; TTFT (2000+1000+500)/3 = 1166.7
+	if summary.AvgTPS != 61.5 || summary.AvgTTFTMs != 1166.7 || summary.TPSRequests != 3 {
+		t.Fatalf("summary TPS/TTFT/count = %v/%v/%d, want 61.5/1166.7/3", summary.AvgTPS, summary.AvgTTFTMs, summary.TPSRequests)
+	}
+
+	gemini, err := storage.GetSummary("24h", "gemini")
+	if err != nil {
+		t.Fatalf("summary gemini: %v", err)
+	}
+	if gemini.AvgTPS != 100 || gemini.AvgTTFTMs != 500 || gemini.TPSRequests != 1 {
+		t.Fatalf("gemini summary = %v/%v/%d, want 100/500/1", gemini.AvgTPS, gemini.AvgTTFTMs, gemini.TPSRequests)
+	}
+
+	providers, err := storage.GetProviderRankings("24h")
+	if err != nil {
+		t.Fatalf("providers: %v", err)
+	}
+	gotProv := map[string]ProviderRanking{}
+	for _, p := range providers {
+		gotProv[p.Provider] = p
+	}
+	if p := gotProv["codex"]; p.AvgTPS != 50 || p.TPSRequests != 2 {
+		t.Fatalf("codex provider TPS = %v/%d, want 50/2", p.AvgTPS, p.TPSRequests)
+	}
+	if p := gotProv["gemini"]; p.AvgTPS != 100 || p.TPSRequests != 1 {
+		t.Fatalf("gemini provider TPS = %v/%d, want 100/1", p.AvgTPS, p.TPSRequests)
+	}
+
+	models, err := storage.GetModelRankings("24h", "")
+	if err != nil {
+		t.Fatalf("models: %v", err)
+	}
+	gotModel := map[string]ModelRanking{}
+	for _, m := range models {
+		gotModel[m.Model] = m
+	}
+	if m := gotModel["gpt-5"]; m.AvgTPS != 50 || m.TPSRequests != 2 || m.TotalRequests != 3 {
+		t.Fatalf("gpt-5 model TPS = %v/%d (requests %d), want 50/2 (3)", m.AvgTPS, m.TPSRequests, m.TotalRequests)
+	}
+}
+
+func TestStorage_TPSIsZeroWithoutEligibleEvents(t *testing.T) {
+	storage, err := OpenStorage(filepath.Join(t.TempDir(), "tps_empty.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer storage.Close()
+	if err := storage.InsertBatch([]EgoEvent{{Timestamp: time.Now().UnixMilli(), Provider: "codex", Model: "gpt-5",
+		Account: "acc", CompletionTokens: 50, TotalTokens: 50, LatencyMs: 900, Status: "success"}}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	summary, err := storage.GetSummary("24h", "")
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if summary.AvgTPS != 0 || summary.AvgTTFTMs != 0 || summary.TPSRequests != 0 || summary.TotalRequests != 1 {
+		t.Fatalf("summary = %+v, want zero TPS fields and 1 request", summary)
 	}
 }
