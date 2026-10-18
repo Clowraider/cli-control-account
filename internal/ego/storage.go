@@ -207,19 +207,14 @@ func (s *Storage) initPricing() error {
 
 	now := time.Now().UnixMilli()
 
-	// 1. Seed base models from embedded LiteLLM pricing dataset (~4,300 models)
-	if embeddedModels, err := getEmbeddedPricing(); err == nil {
-		for _, p := range embeddedModels {
-			if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
-				return fmt.Errorf("failed to seed embedded pricing: %w", err)
-			}
-		}
+	// Seed only verified embedded source rates; manual tariffs are not aliases.
+	embeddedModels, err := getEmbeddedPricing()
+	if err != nil {
+		return fmt.Errorf("failed to load embedded pricing: %w", err)
 	}
-
-	// 2. Curated models override embedded ones (e.g. specific cache creation 1.25x for Claude, Gemini 3.8 variants)
-	for _, p := range DefaultCuratedPricing {
+	for _, p := range embeddedModels {
 		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
-			return fmt.Errorf("failed to seed curated pricing: %w", err)
+			return fmt.Errorf("failed to seed embedded pricing: %w", err)
 		}
 	}
 
@@ -237,13 +232,29 @@ func (s *Storage) loadPricingCacheLocked() error {
 	}
 	defer rows.Close()
 
+	// Old databases can retain obsolete manual aliases. Only source-backed keys
+	// enter the active cache, and their pinned rates always win.
+	embedded, err := getEmbeddedPricing()
+	if err != nil {
+		return err
+	}
+	source := make(map[string]ModelPricing, len(embedded))
+	for _, p := range embedded {
+		source[p.Model] = p
+	}
 	cache := make(map[string]ModelPricing)
 	for rows.Next() {
 		var p ModelPricing
 		if err := rows.Scan(&p.Model, &p.InputCostPerToken, &p.OutputCostPerToken, &p.CacheReadInputTokenCost, &p.CacheCreationInputTokenCost, &p.UpdatedAt); err != nil {
 			return fmt.Errorf("failed to scan ego pricing row: %w", err)
 		}
-		cache[p.Model] = p
+		if verified, ok := source[p.Model]; ok {
+			verified.UpdatedAt = p.UpdatedAt
+			cache[p.Model] = verified
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 	s.pricingCache = cache
 	return nil
@@ -276,7 +287,8 @@ func (s *Storage) GetAllPricing() []ModelPricing {
 	return list
 }
 
-// UpsertPricingBatch inserts or updates model pricing records in SQLite and refreshes the cache.
+// UpsertPricingBatch persists pricing records and refreshes the source-backed cache.
+// Only pinned embedded keys/rates are exposed; unverified database tariffs stay inactive.
 func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("storage is nil or closed")

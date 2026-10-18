@@ -2,64 +2,6 @@ package ego
 
 import "strings"
 
-// DefaultCuratedPricing provides offline embedded rates per token in USD for mainstream models.
-var DefaultCuratedPricing = []ModelPricing{
-	// Claude Models (Anthropic) - Cache creation is 1.25x input token cost
-	{Model: "claude-3-7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3.7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3-5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3.5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3-5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
-	{Model: "claude-3.5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
-	{Model: "claude-3-opus", InputCostPerToken: 0.000015, OutputCostPerToken: 0.000075, CacheReadInputTokenCost: 0.0000015, CacheCreationInputTokenCost: 0.00001875},
-
-	// OpenAI Models
-	{Model: "gpt-4o", InputCostPerToken: 0.0000025, OutputCostPerToken: 0.00001, CacheReadInputTokenCost: 0.00000125},
-	{Model: "gpt-4o-mini", InputCostPerToken: 0.00000015, OutputCostPerToken: 0.0000006, CacheReadInputTokenCost: 0.000000075},
-	{Model: "o1", InputCostPerToken: 0.000015, OutputCostPerToken: 0.00006, CacheReadInputTokenCost: 0.0000075},
-	{Model: "o1-preview", InputCostPerToken: 0.000015, OutputCostPerToken: 0.00006, CacheReadInputTokenCost: 0.0000075},
-	{Model: "o1-mini", InputCostPerToken: 0.0000011, OutputCostPerToken: 0.0000044, CacheReadInputTokenCost: 0.00000055},
-	{Model: "o3-mini", InputCostPerToken: 0.0000011, OutputCostPerToken: 0.0000044, CacheReadInputTokenCost: 0.00000055},
-
-	// Gemini Models (Google)
-	{Model: "gemini-3.8-flash-high", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-3.8-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-3.8-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.5-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.5-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.0-flash-thinking", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-flash-exp", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.0-pro-exp", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-1.5-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-1.5-flash", InputCostPerToken: 0.000000075, OutputCostPerToken: 0.0000003, CacheReadInputTokenCost: 0.00000001875},
-	{Model: "gemini-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-
-	// DeepSeek Models
-	{Model: "deepseek-chat", InputCostPerToken: 0.00000014, OutputCostPerToken: 0.00000028, CacheReadInputTokenCost: 0.000000014},
-	{Model: "deepseek-v3", InputCostPerToken: 0.00000014, OutputCostPerToken: 0.00000028, CacheReadInputTokenCost: 0.000000014},
-	{Model: "deepseek-reasoner", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
-	{Model: "deepseek-r1", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
-
-	// xAI (Grok) Models
-	{Model: "grok-2", InputCostPerToken: 0.000002, OutputCostPerToken: 0.00001},
-	{Model: "grok-2-mini", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000001},
-	{Model: "grok-beta", InputCostPerToken: 0.000005, OutputCostPerToken: 0.000015},
-
-	// Kimi / Moonshot Models
-	{Model: "moonshot-v1-8k", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000002},
-	{Model: "moonshot-v1-32k", InputCostPerToken: 0.000001, OutputCostPerToken: 0.000003},
-	{Model: "moonshot-v1-128k", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000005},
-	{Model: "kimi-k1.5", InputCostPerToken: 0.0000006, OutputCostPerToken: 0.000003},
-
-	// Qwen & Mistral
-	{Model: "qwen-2.5-coder-32b", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000002},
-	{Model: "mistral-large", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000006},
-	{Model: "codestral", InputCostPerToken: 0.0000003, OutputCostPerToken: 0.0000009},
-}
-
 // NormalizeModelName normalizes only case and surrounding whitespace. Provider,
 // version, date and tag components are part of the source key, not aliases.
 func NormalizeModelName(name string) string {

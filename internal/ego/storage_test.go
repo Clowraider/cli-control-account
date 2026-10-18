@@ -8,6 +8,33 @@ import (
 	"time"
 )
 
+func TestPricing_SourceRatesWin(t *testing.T) {
+	s, err := OpenStorage(filepath.Join(t.TempDir(), "source-rates.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	// Simulate a database initialized by the previous manual tariff list.
+	if _, err := s.db.Exec(`INSERT INTO ego_pricing (model, input_cost_per_token, output_cost_per_token, cache_read_input_token_cost, cache_creation_input_token_cost, updated_at)
+		VALUES ('gemini-pro-agent', 1, 2, 0, 0, 0), ('gemini-3.8-flash-high', 1, 2, 0, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("UPDATE ego_pricing SET input_cost_per_token = 1 WHERE model = 'gemini-3.8-flash'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.initPricing(); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"gemini-pro-agent", "gemini-3.8-flash-high"} {
+		if p := s.GetPricing(model); p.InputCostPerToken != 0 || p.OutputCostPerToken != 0 {
+			t.Errorf("persisted manual alias remains active: %+v", p)
+		}
+	}
+	if got := s.GetPricing("gemini-3.8-flash"); got.InputCostPerToken != 0.00000075 || got.OutputCostPerToken != 0.00000375 {
+		t.Fatalf("embedded source must win over manual rates: %+v", got)
+	}
+}
+
 func TestStorage_InsertAndQuery(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "test_ego.db")
@@ -36,7 +63,7 @@ func TestStorage_InsertAndQuery(t *testing.T) {
 		{
 			Timestamp:        now - 500,
 			Provider:         "claude",
-			Model:            "claude-3-5-sonnet",
+			Model:            "anthropic.claude-3-5-sonnet-20241022-v2:0",
 			Account:          "acc-2",
 			PromptTokens:     200,
 			CompletionTokens: 100,
@@ -296,7 +323,7 @@ func TestStorage_TimelineBuckets(t *testing.T) {
 	}
 }
 
-func TestStorage_GeminiFlashHighCost(t *testing.T) {
+func TestStorage_GeminiFlashHighRemainsUnpriced(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "test_gemini.db")
 
@@ -330,14 +357,8 @@ func TestStorage_GeminiFlashHighCost(t *testing.T) {
 	if summary.TotalTokens != 1050000 {
 		t.Errorf("Expected 1050000 tokens, got %d", summary.TotalTokens)
 	}
-	if summary.EstimatedCostUSD <= 0 {
-		t.Errorf("Expected positive EstimatedCostUSD for gemini-3.8-flash-high, got %f", summary.EstimatedCostUSD)
-	}
-	if summary.InputCostUSD <= 0 {
-		t.Errorf("Expected positive InputCostUSD, got %f", summary.InputCostUSD)
-	}
-	if summary.OutputCostUSD <= 0 {
-		t.Errorf("Expected positive OutputCostUSD, got %f", summary.OutputCostUSD)
+	if summary.EstimatedCostUSD != 0 || summary.InputCostUSD != 0 || summary.OutputCostUSD != 0 {
+		t.Errorf("unverified flash-high alias must be unpriced and partial: %+v", summary)
 	}
 }
 
@@ -446,15 +467,19 @@ func TestStorage_EmbeddedPricingCoverage(t *testing.T) {
 	}
 
 	testModels := []string{
-		"grok-2",
-		"grok-beta",
-		"moonshot-v1-8k",
-		"kimi-k1.5",
-		"qwen-2.5-coder-32b",
-		"mistral-large",
-		"claude-3-5-sonnet",
+		"vercel_ai_gateway/xai/grok-2",
+		"moonshot/moonshot-v1-8k",
+		"azure_ai/mistral-large",
+		"anthropic.claude-3-5-sonnet-20241022-v2:0",
 		"gpt-4o",
-		"gemini-3.8-flash-high",
+		"gemini-3.8-flash",
+	}
+	// These old manual names have no exact source key; removing their tariffs
+	// is intentional, rather than silently substituting a provider or family.
+	for _, model := range []string{"grok-2", "grok-beta", "moonshot-v1-8k", "kimi-k1.5", "qwen-2.5-coder-32b", "mistral-large", "claude-3-5-sonnet", "gemini-3.8-flash-high"} {
+		if p := storage.GetPricing(model); p.InputCostPerToken != 0 || p.OutputCostPerToken != 0 {
+			t.Errorf("obsolete manual tariff remains for %s: %+v", model, p)
+		}
 	}
 
 	for _, m := range testModels {
@@ -480,7 +505,7 @@ func TestStorage_IsPricedFlagInModelRankings(t *testing.T) {
 		{
 			Timestamp:        now,
 			Provider:         "xai",
-			Model:            "grok-2",
+			Model:            "vercel_ai_gateway/xai/grok-2",
 			PromptTokens:     1000,
 			CompletionTokens: 500,
 			TotalTokens:      1500,
@@ -511,12 +536,12 @@ func TestStorage_IsPricedFlagInModelRankings(t *testing.T) {
 	}
 
 	for _, r := range rankings {
-		if r.Model == "grok-2" {
+		if r.Model == "vercel_ai_gateway/xai/grok-2" {
 			if !r.IsPriced {
-				t.Errorf("expected grok-2 to have IsPriced = true")
+				t.Errorf("expected vercel_ai_gateway/xai/grok-2 to have IsPriced = true")
 			}
 			if r.EstimatedCostUSD <= 0 {
-				t.Errorf("expected grok-2 to have positive EstimatedCostUSD, got %f", r.EstimatedCostUSD)
+				t.Errorf("expected vercel_ai_gateway/xai/grok-2 to have positive EstimatedCostUSD, got %f", r.EstimatedCostUSD)
 			}
 		} else if r.Model == "my-custom-unlisted-local-model" {
 			if r.IsPriced {
