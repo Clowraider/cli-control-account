@@ -3,6 +3,7 @@ package ego
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -28,10 +29,11 @@ func TestPricing_SourceRatesWin(t *testing.T) {
 	if err := s.initPricing(); err != nil {
 		t.Fatal(err)
 	}
-	for _, model := range []string{"gemini-pro-agent", "gemini-3.8-flash-high"} {
-		if p := s.GetPricing(model); p.InputCostPerToken != 0 || p.OutputCostPerToken != 0 {
-			t.Errorf("persisted manual alias remains active: %+v", p)
-		}
+	if p := s.GetPricing("gemini-pro-agent"); p.InputCostPerToken != 0 || p.OutputCostPerToken != 0 {
+		t.Errorf("persisted manual alias remains active: %+v", p)
+	}
+	if p := s.GetPricing("gemini-3.8-flash-high"); p.InputCostPerToken != 0.00000075 || p.OutputCostPerToken != 0.00000375 {
+		t.Errorf("confirmed alias must use gemini-3.8-flash source rates, not persisted manual ones: %+v", p)
 	}
 	if got := s.GetPricing("gemini-3.8-flash"); got.InputCostPerToken != 0.00000075 || got.OutputCostPerToken != 0.00000375 {
 		t.Fatalf("embedded source must win over manual rates: %+v", got)
@@ -419,7 +421,7 @@ func TestStorage_TimelineBuckets(t *testing.T) {
 	}
 }
 
-func TestStorage_GeminiFlashHighRemainsUnpriced(t *testing.T) {
+func TestStorage_GeminiFlashHighUsesFlashPricing(t *testing.T) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "test_gemini.db")
 
@@ -453,8 +455,11 @@ func TestStorage_GeminiFlashHighRemainsUnpriced(t *testing.T) {
 	if summary.TotalTokens != 1050000 {
 		t.Errorf("Expected 1050000 tokens, got %d", summary.TotalTokens)
 	}
-	if summary.EstimatedCostUSD != 0 || summary.InputCostUSD != 0 || summary.OutputCostUSD != 0 || !summary.IsPartial || summary.UnpricedRequests != 1 {
-		t.Errorf("unverified flash-high alias must be unpriced and partial: %+v", summary)
+	flash := storage.GetPricing("gemini-3.8-flash")
+	total, input, output := CalculateTokenCost(flash, "antigravity", 1000000, 50000, 0, 500000, 0)
+	round := func(v float64) float64 { return math.Round(v*10000) / 10000 }
+	if summary.EstimatedCostUSD != round(total) || summary.InputCostUSD != round(input) || summary.OutputCostUSD != round(output) || summary.EstimatedCostUSD <= 0 || summary.IsPartial || summary.UnpricedRequests != 0 {
+		t.Errorf("confirmed flash-high alias must be priced as gemini-3.8-flash and not partial: %+v (want total %v)", summary, round(total))
 	}
 }
 
@@ -572,7 +577,7 @@ func TestStorage_EmbeddedPricingCoverage(t *testing.T) {
 	}
 	// These old manual names have no exact source key; removing their tariffs
 	// is intentional, rather than silently substituting a provider or family.
-	for _, model := range []string{"grok-2", "grok-beta", "moonshot-v1-8k", "kimi-k1.5", "qwen-2.5-coder-32b", "mistral-large", "claude-3-5-sonnet", "gemini-3.8-flash-high"} {
+	for _, model := range []string{"grok-2", "grok-beta", "moonshot-v1-8k", "kimi-k1.5", "qwen-2.5-coder-32b", "mistral-large", "claude-3-5-sonnet"} {
 		if p := storage.GetPricing(model); p.InputCostPerToken != 0 || p.OutputCostPerToken != 0 {
 			t.Errorf("obsolete manual tariff remains for %s: %+v", model, p)
 		}

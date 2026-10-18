@@ -8,8 +8,16 @@ func NormalizeModelName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+// confirmedAliases maps provider model names to the exact source key they bill as.
+// Only add names confirmed to be the same model; everything else stays unpriced.
+var confirmedAliases = map[string]string{
+	// Antigravity's high-thinking variant of Gemini 3.8 Flash.
+	"gemini-3.8-flash-high": "gemini-3.8-flash",
+}
+
 // FindModelPricing preserves exact source keys before conservative same-name
-// normalization. Unknown versions and provider aliases deliberately stay unpriced.
+// normalization and explicitly confirmed aliases. Unknown versions and provider
+// aliases deliberately stay unpriced.
 func FindModelPricing(pricingMap map[string]ModelPricing, modelName string) (ModelPricing, bool) {
 	if p, ok := pricingMap[modelName]; ok {
 		return p, true
@@ -17,6 +25,11 @@ func FindModelPricing(pricingMap map[string]ModelPricing, modelName string) (Mod
 	if normalized := NormalizeModelName(modelName); normalized != "" {
 		if p, ok := pricingMap[normalized]; ok {
 			return p, true
+		}
+		if target, ok := confirmedAliases[normalized]; ok {
+			if p, ok := pricingMap[target]; ok {
+				return p, true
+			}
 		}
 	}
 	return ModelPricing{Model: modelName}, false

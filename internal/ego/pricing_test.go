@@ -59,7 +59,7 @@ func TestPricing_ExactKeysDoNotInventAliases(t *testing.T) {
 		"vendor/model:paid": {Model: "vendor/model:paid", InputCostPerToken: 4},
 		"model":             {Model: "model", InputCostPerToken: 5},
 	}
-	for _, name := range []string{"claude-5.5", "claude-5-20990101", "gemini-3.8-flash-high", "gemini-pro-agent", "other/model"} {
+	for _, name := range []string{"claude-5.5", "claude-5-20990101", "gemini-pro-agent", "other/model"} {
 		t.Run(name, func(t *testing.T) {
 			if price, ok := FindModelPricing(prices, name); ok {
 				t.Fatalf("unverified model %q resolved to %q", name, price.Model)
@@ -73,6 +73,10 @@ func TestPricing_ExactKeysDoNotInventAliases(t *testing.T) {
 				t.Fatalf("exact source key %q not preserved: %+v, found=%v", name, price, ok)
 			}
 		})
+	}
+	// Explicit user-confirmed alias: Antigravity's high-thinking Flash is gemini-3.8-flash.
+	if price, ok := FindModelPricing(prices, "gemini-3.8-flash-high"); !ok || price.Model != "gemini-3.8-flash" || price.InputCostPerToken != 2 {
+		t.Fatalf("confirmed alias gemini-3.8-flash-high: %+v, found=%v", price, ok)
 	}
 }
 
@@ -109,7 +113,10 @@ func TestPricing_SourceKeysAndRates(t *testing.T) {
 			}
 		})
 	}
-	for _, model := range []string{"gemini-3.8-flash-high", "gemini-pro-agent", "claude-sonnet-5-9", "gpt-6.2-sol", "gpt-4o:latest", "other/gpt-4o"} {
+	if p, ok := FindModelPricing(prices, "gemini-3.8-flash-high"); !ok || p.InputCostPerToken != 0.00000075 || p.OutputCostPerToken != 0.00000375 {
+		t.Errorf("confirmed alias gemini-3.8-flash-high must use gemini-3.8-flash source rates: %+v, found=%v", p, ok)
+	}
+	for _, model := range []string{"gemini-pro-agent", "claude-sonnet-5-9", "gpt-6.2-sol", "gpt-4o:latest", "other/gpt-4o"} {
 		if p, ok := FindModelPricing(prices, model); ok {
 			t.Errorf("unverified alias %q priced as %q", model, p.Model)
 		}
