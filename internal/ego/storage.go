@@ -503,7 +503,8 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 			COALESCE(SUM(completion_tokens), 0),
 			COALESCE(SUM(reasoning_tokens), 0),
 			COALESCE(SUM(cached_tokens), 0),
-			COALESCE(SUM(cache_creation_tokens), 0)
+			COALESCE(SUM(cache_creation_tokens), 0),
+			COUNT(*)
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
@@ -523,18 +524,25 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 	var totalCost, promptCost, outputCost float64
 	for costRows.Next() {
 		var modelName, provName string
-		var pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens int64
-		if err := costRows.Scan(&modelName, &provName, &pTokens, &cTokens, &rTokens, &cachedTokens, &cacheCreationTokens); err != nil {
+		var pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens, requests int64
+		if err := costRows.Scan(&modelName, &provName, &pTokens, &cTokens, &rTokens, &cachedTokens, &cacheCreationTokens, &requests); err != nil {
 			return nil, fmt.Errorf("failed to scan model cost row: %w", err)
 		}
 
-		pricing, _ := FindModelPricing(s.pricingCache, modelName)
+		pricing, matched := FindModelPricing(s.pricingCache, modelName)
+		if !matched || (pricing.InputCostPerToken <= 0 && pricing.OutputCostPerToken <= 0) {
+			stats.UnpricedRequests += requests
+		}
 		tot, inC, outC := CalculateTokenCost(pricing, provName, pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens)
 		totalCost += tot
 		promptCost += inC
 		outputCost += outC
 	}
 
+	if err := costRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read model cost aggregates: %w", err)
+	}
+	stats.IsPartial = stats.UnpricedRequests > 0
 	stats.EstimatedCostUSD = math.Round(totalCost*10000) / 10000
 	stats.InputCostUSD = math.Round(promptCost*10000) / 10000
 	stats.OutputCostUSD = math.Round(outputCost*10000) / 10000

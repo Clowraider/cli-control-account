@@ -6,6 +6,33 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('Ego API-equivalent estimate visibly reports partial pricing, including input and output', async () => {
+  for (const [total, missing] of [[0, 0], [1, 0], [2, 1]]) {
+    const dashboard = loadDashboard(async url => {
+      const endpoint = String(url).split('/ego/')[1].split('?')[0];
+      return { ok: true, json: async () => endpoint === 'stats' ? {
+        total_requests: total, total_success: total, total_failed: 0,
+        estimated_cost_usd: 1, input_cost_usd: 0.4, output_cost_usd: 0.6,
+        is_partial: missing > 0, unpriced_requests: missing,
+      } : endpoint === 'settings' ? { total_records: total } : endpoint === 'models' && missing ? [{
+        model: 'gemini-pro-agent', provider: 'antigravity', total_requests: 1,
+        total_tokens: 150, prompt_tokens: 100, completion_tokens: 50,
+        estimated_cost_usd: 0, avg_latency_ms: 1, is_priced: false,
+      }] : [] };
+    });
+    await dashboard.loadEgoOverview();
+    const notice = dashboard.getElement('ego-pricing-notice');
+    assert.match(notice.textContent, /API-equivalent/i);
+    assert.match(notice.textContent, /not.*subscription/i);
+    assert.equal(/partial/i.test(notice.textContent), missing > 0);
+    if (missing) {
+      assert.match(notice.textContent, /1.*unpriced request/i);
+      assert.match(notice.textContent, /input.*output/i);
+      assert.match(dashboard.getElement('ego-tbody-models').innerHTML, /API-equivalent rate not cataloged">—/);
+    }
+  }
+});
+
 test('view refresh controls share one header slot and only the active control is visible', () => {
   const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
   const slot = html.match(/<div class="header-refresh-slot">([\s\S]*?)<\/div>/);

@@ -2,8 +2,11 @@ package ego
 
 import (
 	"database/sql"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -32,6 +35,99 @@ func TestPricing_SourceRatesWin(t *testing.T) {
 	}
 	if got := s.GetPricing("gemini-3.8-flash"); got.InputCostPerToken != 0.00000075 || got.OutputCostPerToken != 0.00000375 {
 		t.Fatalf("embedded source must win over manual rates: %+v", got)
+	}
+}
+
+func TestPricing_PublicCoverage(t *testing.T) {
+	s, err := OpenStorage(filepath.Join(t.TempDir(), "pricing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	handler := NewHandler(&Worker{storage: s})
+	get := func(endpoint string, target any) {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, httptest.NewRequest("GET", "/ego/api/"+endpoint+"?range=all&provider=all", nil))
+		if rr.Code != 200 {
+			t.Fatalf("%s: HTTP %d: %s", endpoint, rr.Code, rr.Body.String())
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(wantRequests, wantMissing float64, wantPartial bool) {
+		t.Helper()
+		var summary map[string]any
+		get("stats", &summary)
+		if summary["total_requests"] != wantRequests || summary["unpriced_requests"] != wantMissing || summary["is_partial"] != wantPartial {
+			t.Fatalf("coverage: %+v", summary)
+		}
+		if summary["total_tokens"] != wantRequests*150 {
+			t.Fatalf("unpriced tokens must remain counted: %+v", summary)
+		}
+		if wantRequests > 0 && (summary["estimated_cost_usd"] != 0.0007 || summary["input_cost_usd"] != 0.0002 || summary["output_cost_usd"] != 0.0005) {
+			t.Fatalf("priced value must exclude only missing model rates: %+v", summary)
+		}
+	}
+	check(0, 0, false)
+	known := EgoEvent{Timestamp: time.Now().UnixMilli(), Provider: "openai", Model: "gpt-6.1-sol", PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150, Status: "success"}
+	if err := s.InsertBatch([]EgoEvent{known}); err != nil {
+		t.Fatal(err)
+	}
+	check(1, 0, false)
+	unknown := known
+	unknown.Model = "gemini-pro-agent"
+	if err := s.InsertBatch([]EgoEvent{unknown}); err != nil {
+		t.Fatal(err)
+	}
+	check(2, 1, true)
+	var models []ModelRanking
+	get("models", &models)
+	if len(models) != 2 {
+		t.Fatalf("models: %+v", models)
+	}
+	for _, model := range models {
+		if model.Model == known.Model && model.EstimatedCostUSD != 0.0007 || model.Model == unknown.Model && model.EstimatedCostUSD != 0 {
+			t.Errorf("model value inconsistent with summary: %+v", model)
+		}
+		if model.IsPriced != (model.Model == known.Model) {
+			t.Errorf("incorrect model price coverage: %+v", model)
+		}
+	}
+	readEvents := func() [][]any {
+		rows, err := s.db.Query("SELECT * FROM ego_events ORDER BY id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		columns, err := rows.Columns()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var events [][]any
+		for rows.Next() {
+			event := make([]any, len(columns))
+			pointers := make([]any, len(columns))
+			for i := range event {
+				pointers[i] = &event[i]
+			}
+			if err := rows.Scan(pointers...); err != nil {
+				t.Fatal(err)
+			}
+			events = append(events, event)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return events
+	}
+	before := readEvents()
+	check(2, 1, true)
+	get("models", &models)
+	after := readEvents()
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("pricing reads mutated stored usage")
 	}
 }
 
@@ -262,7 +358,7 @@ func TestStorage_TimelineBuckets(t *testing.T) {
 		{
 			Timestamp:        b1Time.UnixMilli(),
 			Provider:         "anthropic",
-			Model:            "claude-3-5-sonnet",
+			Model:            "anthropic.claude-3-5-sonnet-20241022-v2:0",
 			PromptTokens:     100,
 			CompletionTokens: 50,
 			TotalTokens:      150,
@@ -271,7 +367,7 @@ func TestStorage_TimelineBuckets(t *testing.T) {
 		{
 			Timestamp:        b1Same.UnixMilli(),
 			Provider:         "anthropic",
-			Model:            "claude-3-5-sonnet",
+			Model:            "anthropic.claude-3-5-sonnet-20241022-v2:0",
 			PromptTokens:     50,
 			CompletionTokens: 25,
 			TotalTokens:      75,
@@ -280,7 +376,7 @@ func TestStorage_TimelineBuckets(t *testing.T) {
 		{
 			Timestamp:        b2Time.UnixMilli(),
 			Provider:         "anthropic",
-			Model:            "claude-3-5-sonnet",
+			Model:            "anthropic.claude-3-5-sonnet-20241022-v2:0",
 			PromptTokens:     200,
 			CompletionTokens: 100,
 			TotalTokens:      300,
@@ -357,7 +453,7 @@ func TestStorage_GeminiFlashHighRemainsUnpriced(t *testing.T) {
 	if summary.TotalTokens != 1050000 {
 		t.Errorf("Expected 1050000 tokens, got %d", summary.TotalTokens)
 	}
-	if summary.EstimatedCostUSD != 0 || summary.InputCostUSD != 0 || summary.OutputCostUSD != 0 {
+	if summary.EstimatedCostUSD != 0 || summary.InputCostUSD != 0 || summary.OutputCostUSD != 0 || !summary.IsPartial || summary.UnpricedRequests != 1 {
 		t.Errorf("unverified flash-high alias must be unpriced and partial: %+v", summary)
 	}
 }

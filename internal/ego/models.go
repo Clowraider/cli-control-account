@@ -72,6 +72,8 @@ type SummaryStats struct {
 	ReasoningTokens     int64   `json:"reasoning_tokens"`
 	CachedTokens        int64   `json:"cached_tokens"`
 	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	UnpricedRequests    int64   `json:"unpriced_requests"`
+	IsPartial           bool    `json:"is_partial"`
 	EstimatedCostUSD    float64 `json:"estimated_cost_usd"`
 	InputCostUSD        float64 `json:"input_cost_usd"`
 	OutputCostUSD       float64 `json:"output_cost_usd"`

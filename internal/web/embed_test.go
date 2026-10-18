@@ -401,7 +401,12 @@ func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
 
 	html := string(data)
 	requiredElements := []string{
-		"Estimated Retail Value",
+		"API-equivalent Estimate",
+		"ego-pricing-notice",
+		"Partial API-equivalent estimate (total, input and output)",
+		"unpriced_requests",
+		"stats.is_partial",
+		"not a subscription bill",
 		"ego-kpi-cost",
 		"ego-kpi-prompt-cost",
 		"ego-kpi-output-cost",
@@ -412,7 +417,7 @@ func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
 
 	for _, elem := range requiredElements {
 		if !strings.Contains(html, elem) {
-			t.Errorf("expected index.html to contain retail pricing element %q", elem)
+			t.Errorf("expected index.html to contain API-equivalent pricing element %q", elem)
 		}
 	}
 }
