@@ -4,6 +4,31 @@ import (
 	"testing"
 )
 
+func TestPricing_ExactKeysDoNotInventAliases(t *testing.T) {
+	prices := map[string]ModelPricing{
+		"claude-5":          {Model: "claude-5", InputCostPerToken: 1},
+		"gemini-3.8-flash":  {Model: "gemini-3.8-flash", InputCostPerToken: 2},
+		"gemini-pro":        {Model: "gemini-pro", InputCostPerToken: 3},
+		"vendor/model:paid": {Model: "vendor/model:paid", InputCostPerToken: 4},
+		"model":             {Model: "model", InputCostPerToken: 5},
+	}
+	for _, name := range []string{"claude-5.5", "claude-5-20990101", "gemini-3.8-flash-high", "gemini-pro-agent", "other/model"} {
+		t.Run(name, func(t *testing.T) {
+			if price, ok := FindModelPricing(prices, name); ok {
+				t.Fatalf("unverified model %q resolved to %q", name, price.Model)
+			}
+		})
+	}
+	for _, name := range []string{"claude-5", "vendor/model:paid"} {
+		t.Run(name, func(t *testing.T) {
+			price, ok := FindModelPricing(prices, name)
+			if !ok || price.Model != name {
+				t.Fatalf("exact source key %q not preserved: %+v, found=%v", name, price, ok)
+			}
+		})
+	}
+}
+
 func TestPricing_EmbeddedRatesAndFuzzyMatching(t *testing.T) {
 	// Build map from DefaultCuratedPricing
 	pricingMap := make(map[string]ModelPricing)
@@ -42,90 +67,6 @@ func TestPricing_EmbeddedRatesAndFuzzyMatching(t *testing.T) {
 		}
 	}
 
-	// Fuzzy matching test cases
-	fuzzyCases := []struct {
-		name          string
-		inputModel    string
-		expectedModel string
-	}{
-		{
-			name:          "dated claude snapshot",
-			inputModel:    "claude-3-7-sonnet-20250219",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "anthropic provider prefix",
-			inputModel:    "anthropic/claude-3-7-sonnet",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "dotted version format",
-			inputModel:    "claude-3.7-sonnet",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "dated 3.5 sonnet",
-			inputModel:    "claude-3-5-sonnet-20241022",
-			expectedModel: "claude-3-5-sonnet",
-		},
-		{
-			name:          "longest prefix gpt-4o-mini",
-			inputModel:    "openai/gpt-4o-mini-2024-07-18",
-			expectedModel: "gpt-4o-mini",
-		},
-		{
-			name:          "google models prefix",
-			inputModel:    "models/gemini-2.0-flash",
-			expectedModel: "gemini-2.0-flash",
-		},
-		{
-			name:          "deepseek prefix",
-			inputModel:    "deepseek/deepseek-chat",
-			expectedModel: "deepseek-chat",
-		},
-		{
-			name:          "deepseek reasoning alias",
-			inputModel:    "deepseek-r1",
-			expectedModel: "deepseek-r1",
-		},
-		{
-			name:          "gemini-3.8-flash-high exact",
-			inputModel:    "gemini-3.8-flash-high",
-			expectedModel: "gemini-3.8-flash-high",
-		},
-		{
-			name:          "gemini flash variant with prefix",
-			inputModel:    "antigravity/gemini-3.8-flash-high",
-			expectedModel: "gemini-3.8-flash-high",
-		},
-		{
-			name:          "tag suffix with colon",
-			inputModel:    "gpt-4o:latest",
-			expectedModel: "gpt-4o",
-		},
-	}
-
-	for _, tc := range fuzzyCases {
-		t.Run(tc.name, func(t *testing.T) {
-			p, ok := FindModelPricing(pricingMap, tc.inputModel)
-			if !ok {
-				t.Fatalf("expected fuzzy match for %q, got none", tc.inputModel)
-			}
-			if p.Model != tc.expectedModel && stringsTrimDash(p.Model) != stringsTrimDash(tc.expectedModel) {
-				t.Errorf("for input %q: expected match %q, got %q", tc.inputModel, tc.expectedModel, p.Model)
-			}
-		})
-	}
-}
-
-func stringsTrimDash(s string) string {
-	res := make([]rune, 0, len(s))
-	for _, r := range s {
-		if r != '.' && r != '-' {
-			res = append(res, r)
-		}
-	}
-	return string(res)
 }
 
 func TestPricing_CalculateCostFormula(t *testing.T) {
