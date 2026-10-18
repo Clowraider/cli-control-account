@@ -2142,15 +2142,14 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
             </span>
           </div>
 
-          <div class="ego-kpi-card">
+          <div class="ego-kpi-card" id="ego-pricing-notice" title="API-equivalent estimate, not a subscription bill.">
             <span class="ego-kpi-title">API-equivalent Estimate</span>
             <span id="ego-kpi-cost" class="ego-kpi-val" style="color:var(--meter-text-green);">$0.00</span>
             <span class="ego-kpi-sub">
-              <span>Input estimate: <strong id="ego-kpi-prompt-cost">$0.00</strong></span>
+              <span>Input: <strong id="ego-kpi-prompt-cost">$0.00</strong></span>
               <span>&middot;</span>
-              <span>Output estimate: <strong id="ego-kpi-output-cost">$0.00</strong></span>
+              <span>Output: <strong id="ego-kpi-output-cost">$0.00</strong></span>
             </span>
-            <span id="ego-pricing-notice" class="ego-kpi-sub" role="status">API-equivalent estimate, not a subscription bill.</span>
           </div>
 
           <div class="ego-kpi-card">
@@ -6364,7 +6363,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     if (elOutTokens) elOutTokens.textContent = formatCompactTokens(stats.completion_tokens);
     const pricingNotice = document.getElementById('ego-pricing-notice');
     if (pricingNotice) {
-      pricingNotice.textContent = stats.is_partial
+      pricingNotice.title = stats.is_partial
         ? `Partial API-equivalent estimate (total, input and output): ${Number(stats.unpriced_requests).toLocaleString('en-US')} unpriced request(s) excluded from value, not token counts. Not a subscription bill.`
         : 'API-equivalent estimate, not a subscription bill.';
     }

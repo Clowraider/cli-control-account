@@ -6,7 +6,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-test('Ego API-equivalent estimate visibly reports partial pricing, including input and output', async () => {
+test('Ego API-equivalent estimate explains partial pricing only on native hover', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  assert.match(html, /<div class="ego-kpi-card" id="ego-pricing-notice" title="API-equivalent estimate, not a subscription bill\.">/);
+  assert.doesNotMatch(html, /<span[^>]*id="ego-pricing-notice"/);
+  assert.match(html, /<span>Input: <strong id="ego-kpi-prompt-cost"/);
+  assert.match(html, /<span>Output: <strong id="ego-kpi-output-cost"/);
   for (const [total, missing] of [[0, 0], [1, 0], [2, 1]]) {
     const dashboard = loadDashboard(async url => {
       const endpoint = String(url).split('/ego/')[1].split('?')[0];
@@ -22,12 +27,16 @@ test('Ego API-equivalent estimate visibly reports partial pricing, including inp
     });
     await dashboard.loadEgoOverview();
     const notice = dashboard.getElement('ego-pricing-notice');
-    assert.match(notice.textContent, /API-equivalent/i);
-    assert.match(notice.textContent, /not.*subscription/i);
-    assert.equal(/partial/i.test(notice.textContent), missing > 0);
+    assert.match(notice.title, /API-equivalent/i);
+    assert.match(notice.title, /not.*subscription/i);
+    assert.equal(/partial/i.test(notice.title), missing > 0);
+    assert.equal(notice.textContent, '', 'rendering must not overwrite the card contents');
+    assert.equal(dashboard.getElement('ego-kpi-cost').textContent, '$1.00');
+    assert.equal(dashboard.getElement('ego-kpi-prompt-cost').textContent, '$0.40');
+    assert.equal(dashboard.getElement('ego-kpi-output-cost').textContent, '$0.60');
     if (missing) {
-      assert.match(notice.textContent, /1.*unpriced request/i);
-      assert.match(notice.textContent, /input.*output/i);
+      assert.match(notice.title, /1.*unpriced request/i);
+      assert.match(notice.title, /input.*output/i);
       assert.match(dashboard.getElement('ego-tbody-models').innerHTML, /API-equivalent rate not cataloged">—/);
     }
   }
