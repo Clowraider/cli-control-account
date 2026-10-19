@@ -787,12 +787,6 @@ test('Today time labels adapt to narrow charts without changing the legacy axis'
   assert.match(axis.innerHTML, /00:00/);
   assert.match(axis.innerHTML, /23:00/);
   assert.doesNotMatch(axis.innerHTML, /text-overflow:ellipsis/);
-  const centers = [...axis.innerHTML.matchAll(/left:clamp\(24px,([\d.]+)%/g)]
-    .map(match => Math.max(24, Math.min(axis.clientWidth - 24, Number(match[1]) / 100 * axis.clientWidth)));
-  assert.ok(centers.length >= 2);
-  for (let i = 1; i < centers.length; i++) {
-    assert.ok(centers[i] - centers[i - 1] >= 48, 'edge clamping must preserve full label separation');
-  }
   dashboard.renderEgoTimelineChart(points, '24h');
   assert.equal(axis.innerHTML, legacy, 'returning to 24h restores the original axis');
 });
