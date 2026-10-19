@@ -696,7 +696,10 @@ test('Ego labels resolve auth identifiers without reading secret account fields'
   assert.equal(egoAccountLabel('file.json', [{ name: 'file.json' }], 'email'), 'file');
 });
 
-test('Today persists and shares one calendar window across analytics, never settings', async () => {
+test('Today appears first, persists and shares one calendar window across analytics, never settings', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const ranges = html.match(/id="ego-time-ranges">([\s\S]*?)<\/div>/)[1];
+  assert.deepEqual([...ranges.matchAll(/data-range="([^"]+)"/g)].map(match => match[1]), ['today', '1h', '24h', '7d', '30d', 'all']);
   const urls = [];
   let now = new Date(2025, 2, 9, 23, 59, 59).getTime();
   class Clock extends Date {
