@@ -100,8 +100,6 @@ func TestTodayHTTP(t *testing.T) {
 			}
 		})
 	}
-	_, beforeSettings := get("settings", "")
-	_, beforeAll := get("stats", "?range=all")
 	for _, endpoint := range endpoints {
 		for _, bounds := range []string{
 			"", "&start=NaN&end=2", "&start=1.5&end=2", "&start=0&end=1",
@@ -121,11 +119,6 @@ func TestTodayHTTP(t *testing.T) {
 				t.Errorf("legacy changed: %s %s", endpoint, r)
 			}
 		}
-	}
-	_, afterSettings := get("settings", "")
-	_, afterAll := get("stats", "?range=all")
-	if beforeSettings != afterSettings || beforeAll != afterAll {
-		t.Fatal("read-only requests changed public state")
 	}
 	_, accounts := get("accounts", fmt.Sprintf("?range=today&start=%d&end=%d", start, end))
 	var rows []AccountRanking

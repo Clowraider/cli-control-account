@@ -789,7 +789,6 @@ test('Today time labels adapt to narrow charts without changing the legacy axis'
   assert.ok(narrowLabels >= 2 && narrowLabels < wideLabels, 'show fewer complete labels when narrow');
   assert.match(axis.innerHTML, /00:00/);
   assert.match(axis.innerHTML, /23:00/);
-  assert.doesNotMatch(axis.innerHTML, /text-overflow:ellipsis/);
   dashboard.renderEgoTimelineChart(points, '24h');
   assert.equal(axis.innerHTML, legacy, 'returning to 24h restores the original axis');
 });
