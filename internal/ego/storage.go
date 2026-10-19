@@ -412,15 +412,37 @@ func calculateMinTimestamp(timeRange string) int64 {
 	}
 }
 
+// queryWindow is resolved once per HTTP request. A zero end preserves legacy lower-only SQL.
+type queryWindow struct {
+	start int64
+	end   int64
+}
+
+func legacyWindow(timeRange string) queryWindow {
+	return queryWindow{start: calculateMinTimestamp(timeRange)}
+}
+
+func (w queryWindow) bound(query string, args []any) (string, []any) {
+	if w.end != 0 {
+		query += " AND timestamp < ?"
+		args = append(args, w.end)
+	}
+	return query, args
+}
+
 // GetSummary returns overall aggregated stats for the selected window and optional provider filter.
 func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, error) {
+	return s.getSummary(legacyWindow(timeRange), provider)
+}
+
+func (s *Storage) getSummary(window queryWindow, provider string) (*SummaryStats, error) {
 	if s == nil || s.db == nil {
 		return &SummaryStats{}, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	minTime := calculateMinTimestamp(timeRange)
+	minTime := window.start
 	query := `
 		SELECT
 			COUNT(*),
@@ -440,7 +462,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
-	args := []any{minTime}
+	query, args := window.bound(query, []any{minTime})
 	if provider != "" && provider != "all" {
 		query += " AND provider = ?"
 		args = append(args, provider)
@@ -495,7 +517,7 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
-	costArgs := []any{minTime}
+	costQuery, costArgs := window.bound(costQuery, []any{minTime})
 	if provider != "" && provider != "all" {
 		costQuery += " AND provider = ?"
 		costArgs = append(costArgs, provider)
@@ -532,13 +554,17 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 
 // GetTimeline returns aggregated data points for time-series charts.
 func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoint, error) {
+	return s.getTimeline(legacyWindow(timeRange), timeRange, provider)
+}
+
+func (s *Storage) getTimeline(window queryWindow, timeRange string, provider string) ([]TimelinePoint, error) {
 	if s == nil || s.db == nil {
 		return []TimelinePoint{}, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	minTime := calculateMinTimestamp(timeRange)
+	minTime := window.start
 	// Bucket format: 5-minute for 1h, hourly for 24h, daily for > 24h
 	var bucketExpr string
 	if timeRange == "1h" {
@@ -549,10 +575,17 @@ func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoin
 		bucketExpr = "strftime('%Y-%m-%d', timestamp / 1000, 'unixepoch', 'localtime')"
 	}
 
+	timestampExpr := "MIN(timestamp)"
+	if timeRange == "today" {
+		// Integer elapsed hours preserve fractional offsets and DST day lengths.
+		bucketExpr = fmt.Sprintf("%d + ((timestamp - %d) / 3600000) * 3600000", window.start, window.start)
+		timestampExpr = bucketExpr
+	}
+
 	query := fmt.Sprintf(`
 		SELECT
 			%s as bucket,
-			MIN(timestamp) as min_ts,
+			%s as min_ts,
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
@@ -562,9 +595,9 @@ func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoin
 			COALESCE(CAST(AVG(latency_ms) AS INTEGER), 0)
 		FROM ego_events
 		WHERE timestamp >= ?
-	`, bucketExpr)
+	`, bucketExpr, timestampExpr)
 
-	args := []any{minTime}
+	query, args := window.bound(query, []any{minTime})
 	if provider != "" && provider != "all" {
 		query += " AND provider = ?"
 		args = append(args, provider)
@@ -601,13 +634,17 @@ func (s *Storage) GetTimeline(timeRange string, provider string) ([]TimelinePoin
 
 // GetProviderRankings ranks providers by total tokens burned and shows latency metrics.
 func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, error) {
+	return s.getProviderRankings(legacyWindow(timeRange))
+}
+
+func (s *Storage) getProviderRankings(window queryWindow) ([]ProviderRanking, error) {
 	if s == nil || s.db == nil {
 		return []ProviderRanking{}, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	minTime := calculateMinTimestamp(timeRange)
+	minTime := window.start
 	query := `
 		SELECT
 			provider,
@@ -622,10 +659,10 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 			COALESCE(SUM(CASE WHEN gen_ms > 0 THEN 1 ELSE 0 END), 0)
 		FROM ego_events
 		WHERE timestamp >= ?
-		GROUP BY provider
-		ORDER BY SUM(total_tokens) DESC, COUNT(*) DESC
 	`
-	rows, err := s.db.Query(query, minTime)
+	query, args := window.bound(query, []any{minTime})
+	query += " GROUP BY provider ORDER BY SUM(total_tokens) DESC, COUNT(*) DESC"
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query provider rankings: %w", err)
 	}
@@ -662,13 +699,17 @@ func (s *Storage) GetProviderRankings(timeRange string) ([]ProviderRanking, erro
 
 // GetModelRankings ranks models by total tokens burned.
 func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRanking, error) {
+	return s.getModelRankings(legacyWindow(timeRange), provider)
+}
+
+func (s *Storage) getModelRankings(window queryWindow, provider string) ([]ModelRanking, error) {
 	if s == nil || s.db == nil {
 		return []ModelRanking{}, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	minTime := calculateMinTimestamp(timeRange)
+	minTime := window.start
 	query := `
 		SELECT
 			model,
@@ -687,7 +728,7 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
-	args := []any{minTime}
+	query, args := window.bound(query, []any{minTime})
 	if provider != "" && provider != "all" {
 		query += " AND provider = ?"
 		args = append(args, provider)
@@ -737,13 +778,17 @@ func (s *Storage) GetModelRankings(timeRange string, provider string) ([]ModelRa
 
 // GetAccountRankings ranks accounts by tokens burned.
 func (s *Storage) GetAccountRankings(timeRange string, provider string) ([]AccountRanking, error) {
+	return s.getAccountRankings(legacyWindow(timeRange), provider)
+}
+
+func (s *Storage) getAccountRankings(window queryWindow, provider string) ([]AccountRanking, error) {
 	if s == nil || s.db == nil {
 		return []AccountRanking{}, nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	minTime := calculateMinTimestamp(timeRange)
+	minTime := window.start
 	query := `
 		SELECT
 			account,
@@ -756,7 +801,7 @@ func (s *Storage) GetAccountRankings(timeRange string, provider string) ([]Accou
 		FROM ego_events
 		WHERE timestamp >= ? AND account != ''
 	`
-	args := []any{minTime}
+	query, args := window.bound(query, []any{minTime})
 	if provider != "" && provider != "all" {
 		query += " AND provider = ?"
 		args = append(args, provider)

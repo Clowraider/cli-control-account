@@ -2122,6 +2122,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
             <div id="ego-time-ranges">
               <button class="ego-btn-range" data-range="1h">1h</button>
               <button class="ego-btn-range active" data-range="24h">24h</button>
+              <button class="ego-btn-range" data-range="today">Today</button>
               <button class="ego-btn-range" data-range="7d">7d</button>
               <button class="ego-btn-range" data-range="30d">30d</button>
               <button class="ego-btn-range" data-range="all">All</button>
@@ -2474,7 +2475,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
         egoMaintenanceCollapsed: typeof prefs.egoMaintenanceCollapsed === 'boolean' ? prefs.egoMaintenanceCollapsed : defaults.egoMaintenanceCollapsed,
         hideEmails: prefs.hideEmails === true,
         quotaDisplay: prefs.quotaDisplay === 'used' ? 'used' : defaults.quotaDisplay,
-        egoRange: ['1h', '24h', '7d', '30d', 'all'].includes(prefs.egoRange) ? prefs.egoRange : defaults.egoRange,
+        egoRange: ['1h', '24h', 'today', '7d', '30d', 'all'].includes(prefs.egoRange) ? prefs.egoRange : defaults.egoRange,
         egoIdentity: prefs.egoIdentity === 'prefix' ? 'prefix' : defaults.egoIdentity,
         favorites: Array.isArray(prefs.favorites) ? prefs.favorites.filter(name => typeof name === 'string') : [],
         lowQuotaThreshold: UI_PREF_THRESHOLDS.includes(prefs.lowQuotaThreshold) ? prefs.lowQuotaThreshold : defaults.lowQuotaThreshold,
@@ -5806,7 +5807,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
   let lastEgoAccounts = [];
 
   function setEgoRange(range) {
-    currentEgoRange = ['1h', '24h', '7d', '30d', 'all'].includes(range) ? range : '24h';
+    currentEgoRange = ['1h', '24h', 'today', '7d', '30d', 'all'].includes(range) ? range : '24h';
     document.querySelectorAll('#ego-time-ranges .ego-btn-range').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.range === currentEgoRange);
     });
@@ -5904,6 +5905,14 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     }
 
     const version = ++egoLoadVersion;
+    const range = currentEgoRange;
+    const now = new Date();
+    const window = range === 'today' ? {
+      start: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(),
+      end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime(),
+      now: now.getTime()
+    } : null;
+    const rangeQuery = `range=${range}` + (window ? `&start=${window.start}&end=${window.end}` : '');
     const refresh = document.getElementById('ego-btn-refresh');
     const refreshIcon = document.getElementById('ego-refresh-icon');
     if (egoLoadsPending++ === 0) egoRefreshWasDisabled = refresh.disabled;
@@ -5911,12 +5920,12 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     refreshIcon.classList.add('spinning');
     try {
       const [statsRes, providersRes, modelsRes, accountsRes, settingsRes, timelineRes] = await Promise.allSettled([
-        fetchEgoSection(`/stats?range=${currentEgoRange}&provider=all`),
-        fetchEgoSection(`/providers?range=${currentEgoRange}`),
-        fetchEgoSection(`/models?range=${currentEgoRange}&provider=all`),
-        fetchEgoSection(`/accounts?range=${currentEgoRange}&provider=all`),
+        fetchEgoSection(`/stats?${rangeQuery}&provider=all`),
+        fetchEgoSection(`/providers?${rangeQuery}`),
+        fetchEgoSection(`/models?${rangeQuery}&provider=all`),
+        fetchEgoSection(`/accounts?${rangeQuery}&provider=all`),
         fetchEgoSection('/settings'),
-        fetchEgoSection(`/timeline?range=${currentEgoRange}&provider=all`)
+        fetchEgoSection(`/timeline?${rangeQuery}&provider=all`)
       ]);
       if (version !== egoLoadVersion) return;
       const sections = ['stats', 'providers', 'models', 'accounts', 'settings', 'timeline'];
@@ -5969,7 +5978,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
         renderEgoSettings(settingsRes.value);
       }
       if (timelineRes.status === 'fulfilled' && timelineRes.value && !timelineRes.value.error) {
-        renderEgoTimelineChart(timelineRes.value);
+        renderEgoTimelineChart(timelineRes.value, range, window);
       } else if (document.getElementById('ego-chart-content').style.display !== 'block') {
         for (const id of ['ego-chart-empty', 'ego-chart-content', 'ego-chart-tooltip']) {
           document.getElementById(id).style.display = 'none';
@@ -5990,6 +5999,10 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
   }
 
   function formatEgoTimelineLabel(timeBucket, timestamp, range) {
+    if (range === 'today') {
+      const d = new Date(timestamp);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
     if (!timeBucket) return '';
     if (range === '1h' || range === '24h') {
       const parts = timeBucket.split(' ');
@@ -6012,9 +6025,21 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     return timeBucket;
   }
 
-  function zeroFillEgoTimeline(points, range) {
+  function zeroFillEgoTimeline(points, range, window) {
     if (!Array.isArray(points)) return [];
     if (range === 'all') return points;
+    if (range === 'today') {
+      const stepMs = 60 * 60 * 1000;
+      const map = new Map(points.map(point => [point.timestamp, point]));
+      const result = [];
+      // Use the request snapshot even when midnight passes while fetching.
+      for (let ts = window.start; ts < window.end && ts <= window.now; ts += stepMs) {
+        result.push({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
+          total_requests: 0, avg_latency_ms: 0, ...map.get(ts),
+          timestamp: ts, time_bucket: formatEgoTimelineLabel('', ts, 'today') });
+      }
+      return result;
+    }
 
     const pad2 = n => (n < 10 ? '0' + n : '' + n);
 
@@ -6148,7 +6173,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     return points;
   }
 
-  function renderEgoTimelineChart(rawPoints) {
+  function renderEgoTimelineChart(rawPoints, range = currentEgoRange, window = null) {
     const elCard = document.getElementById('ego-timeline-card');
     const elEmpty = document.getElementById('ego-chart-empty');
     const elContent = document.getElementById('ego-chart-content');
@@ -6164,7 +6189,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     const hasData = Array.isArray(rawPoints) && rawPoints.length > 0;
     const hasTokens = hasData && rawPoints.some(p => (p.total_tokens || 0) > 0);
 
-    if (!hasData || !hasTokens) {
+    if (range !== 'today' && (!hasData || !hasTokens)) {
       if (elPromptStat) elPromptStat.textContent = '0';
       if (elCompStat) elCompStat.textContent = '0';
       if (elPeakStat) elPeakStat.textContent = '0';
@@ -6177,7 +6202,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     if (elEmpty) elEmpty.style.display = 'none';
     if (elContent) elContent.style.display = 'block';
 
-    const points = zeroFillEgoTimeline(rawPoints, currentEgoRange);
+    const points = zeroFillEgoTimeline(rawPoints, range, window);
 
     const totalPrompt = points.reduce((acc, p) => acc + (p.prompt_tokens || 0), 0);
     const totalCompletion = points.reduce((acc, p) => acc + (p.completion_tokens || 0), 0);
@@ -6240,15 +6265,36 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     svg.innerHTML = svgInner;
 
     if (elXaxis) {
+      elXaxis.todayResizeObserver?.disconnect();
       const step = N >= 24 ? 4 : (N > 12 ? 2 : 1);
-      if (startX > 0) {
+      if (range === 'today') {
+        elXaxis.style.display = 'block';
+        elXaxis.style.width = '100%';
+        elXaxis.style.margin = '8px 0 0 0';
+        const renderLabels = () => {
+          const width = elXaxis.clientWidth || 280;
+          // Reserve the 48px label, up to 24px of edge clamping, and an 8px gap.
+          const labelStep = Math.max(1, Math.ceil(80 * svgWidth / (colWidth * width)));
+          const labels = points.map((p, i) => {
+            if (i !== N - 1 && (i % labelStep !== 0 || N - 1 - i < labelStep)) return '';
+            const left = (startX + (i + 0.5) * colWidth) / svgWidth * 100;
+            return `<span style="position:absolute;left:clamp(24px,${left}%,calc(100% - 24px));transform:translateX(-50%);width:48px;text-align:center;font-size:10.5px;color:var(--text-quaternary);font-family:var(--font-mono);white-space:nowrap;">${escapeHtml(p.time_bucket)}</span>`;
+          }).join('');
+          elXaxis.innerHTML = `<div style="position:relative;height:16px;">${labels}</div>`;
+        };
+        renderLabels();
+        if (typeof ResizeObserver !== 'undefined') {
+          elXaxis.todayResizeObserver = new ResizeObserver(renderLabels);
+          elXaxis.todayResizeObserver.observe(elXaxis);
+        }
+      } else if (startX > 0) {
         elXaxis.style.display = 'flex';
         elXaxis.style.justifyContent = 'center';
         elXaxis.style.width = `${totalWidth}px`;
         elXaxis.style.margin = '8px auto 0 auto';
         elXaxis.innerHTML = points.map((p, i) => {
           const isVisible = (i % step === 0) || (i === N - 1);
-          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, currentEgoRange);
+          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, range);
           return `<div style="width:${colWidth}px; text-align:center; font-size:10.5px; color:var(--text-quaternary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px;">${isVisible ? escapeHtml(label) : ''}</div>`;
         }).join('');
       } else {
@@ -6258,7 +6304,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
         elXaxis.style.margin = '8px 0 0 0';
         elXaxis.innerHTML = points.map((p, i) => {
           const isVisible = (i % step === 0) || (i === N - 1);
-          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, currentEgoRange);
+          const label = formatEgoTimelineLabel(p.time_bucket, p.timestamp, range);
           return `<div style="text-align:center; font-size:10.5px; color:var(--text-quaternary); font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 2px;">${isVisible ? escapeHtml(label) : ''}</div>`;
         }).join('');
       }
@@ -6278,7 +6324,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
       const d = p.timestamp ? new Date(p.timestamp) : null;
       let headerText = p.time_bucket || '';
       if (d && !isNaN(d.getTime())) {
-        if (currentEgoRange === '1h' || currentEgoRange === '24h') {
+        if (range === '1h' || range === '24h' || range === 'today') {
           headerText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + (p.time_bucket || '');
         } else {
           headerText = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
