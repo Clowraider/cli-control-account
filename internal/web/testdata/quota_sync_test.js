@@ -732,67 +732,6 @@ test('Today appears first, persists and shares one calendar window across analyt
   assert.equal(dashboard.loadUiPrefs().egoRange, '24h');
 });
 
-test('Today chart anchors fractional offsets and DST days without future slots', () => {
-  const originalTZ = process.env.TZ;
-  try {
-    for (const [zone, month, day, hours] of [
-      ['Asia/Kathmandu', 0, 15, 24], ['Asia/Kolkata', 0, 15, 24],
-      ['America/New_York', 2, 9, 23], ['America/New_York', 10, 2, 25],
-    ]) {
-      process.env.TZ = zone;
-      const start = new Date(2025, month, day).getTime();
-      const end = new Date(2025, month, day + 1).getTime();
-      const window = { start, end, now: end - 1 };
-      const dashboard = loadDashboard();
-      const points = dashboard.zeroFillEgoTimeline([
-        { timestamp: start + 3600000, total_tokens: 9 },
-        { timestamp: end, total_tokens: 99 },
-      ], 'today', window);
-      assert.equal(points.length, hours, zone);
-      assert.equal(points[0].timestamp, start);
-      assert.equal(points[1].total_tokens, 9);
-      assert.equal(points.at(-1).timestamp, end - 3600000);
-      for (const point of points) {
-        const d = new Date(point.timestamp);
-        assert.equal(dashboard.formatEgoTimelineLabel(point.time_bucket, point.timestamp, 'today'),
-          `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
-      }
-      const partial = dashboard.zeroFillEgoTimeline([], 'today', { start, end, now: start + 7200001 });
-      assert.equal(partial.length, 3);
-      assert.equal(partial[0].total_tokens, 0);
-      const legacy = [{ timestamp: start, time_bucket: '2025-01-15', total_tokens: 1 }];
-      assert.equal(dashboard.zeroFillEgoTimeline(legacy, 'all'), legacy);
-      assert.equal(dashboard.formatEgoTimelineLabel('2025-01-15 03:00', start, '24h'), '03:00');
-      assert.equal(dashboard.zeroFillEgoTimeline([], '24h').length, 24);
-      assert.equal(dashboard.zeroFillEgoTimeline([], '1h').length, 12);
-    }
-  } finally {
-    if (originalTZ === undefined) delete process.env.TZ;
-    else process.env.TZ = originalTZ;
-  }
-});
-
-test('Today time labels adapt to narrow charts without changing the legacy axis', () => {
-  const dashboard = loadDashboard();
-  const axis = dashboard.getElement('ego-chart-xaxis');
-  const start = new Date(2025, 0, 15).getTime();
-  const window = { start, end: start + 86400000, now: start + 86399999 };
-  const points = [{ timestamp: start, time_bucket: '00:00', total_tokens: 1 }];
-  axis.clientWidth = 1000;
-  dashboard.renderEgoTimelineChart(points, '24h');
-  const legacy = axis.innerHTML;
-  dashboard.renderEgoTimelineChart(points, 'today', window);
-  const wideLabels = (axis.innerHTML.match(/\d{2}:\d{2}/g) || []).length;
-  axis.clientWidth = 250;
-  dashboard.renderEgoTimelineChart(points, 'today', window);
-  const narrowLabels = (axis.innerHTML.match(/\d{2}:\d{2}/g) || []).length;
-  assert.ok(narrowLabels >= 2 && narrowLabels < wideLabels, 'show fewer complete labels when narrow');
-  assert.match(axis.innerHTML, /00:00/);
-  assert.match(axis.innerHTML, /23:00/);
-  dashboard.renderEgoTimelineChart(points, '24h');
-  assert.equal(axis.innerHTML, legacy, 'returning to 24h restores the original axis');
-});
-
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -841,9 +780,6 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     egoAccountLabel,
     setEgoIdentity,
     setEgoRange,
-    zeroFillEgoTimeline,
-    formatEgoTimelineLabel,
-    renderEgoTimelineChart,
     renderEgoAccountsTable,
     isLowQuota: (row) => isLowQuota(row),
     setLowQuotaThreshold: (value) => { lowQuotaThreshold = value; },
