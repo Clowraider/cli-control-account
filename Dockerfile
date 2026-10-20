@@ -10,7 +10,7 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-ARG VERSION=0.6.7
+ARG VERSION=0.6.8
 ENV CGO_ENABLED=1
 
 # Run Go test suite

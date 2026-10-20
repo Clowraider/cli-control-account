@@ -14,8 +14,8 @@ func TestVersion_NotEmpty(t *testing.T) {
 }
 
 func TestVersion_ValueAndNoVPrefix(t *testing.T) {
-	if version.Version != "0.6.7" {
-		t.Fatalf("expected version.Version to be '0.6.7', got %q", version.Version)
+	if version.Version != "0.6.8" {
+		t.Fatalf("expected version.Version to be '0.6.8', got %q", version.Version)
 	}
 	if strings.HasPrefix(version.Version, "v") {
 		t.Fatalf("expected version.Version not to have 'v' prefix, got %q", version.Version)
