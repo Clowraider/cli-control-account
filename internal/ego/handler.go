@@ -94,11 +94,28 @@ func endsWith(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
 
+func (h *Handler) readWindow(rw http.ResponseWriter, req *http.Request) (queryWindow, bool) {
+	q := req.URL.Query()
+	if q.Get("range") != "today" {
+		return legacyWindow(q.Get("range")), true
+	}
+	start, startErr := strconv.ParseInt(q.Get("start"), 10, 64)
+	end, endErr := strconv.ParseInt(q.Get("end"), 10, 64)
+	if startErr != nil || endErr != nil || start <= 0 || end <= start || end-start > 26*60*60*1000 {
+		h.writeError(rw, http.StatusBadRequest, "invalid Today bounds: start and end must be positive epoch milliseconds, ordered and at most 26 hours apart")
+		return queryWindow{}, false
+	}
+	return queryWindow{start: start, end: end}, true
+}
+
 func (h *Handler) handleStats(rw http.ResponseWriter, req *http.Request) {
-	timeRange := req.URL.Query().Get("range")
+	window, ok := h.readWindow(rw, req)
+	if !ok {
+		return
+	}
 	provider := req.URL.Query().Get("provider")
 
-	stats, err := h.worker.Storage().GetSummary(timeRange, provider)
+	stats, err := h.worker.Storage().getSummary(window, provider)
 	if err != nil {
 		h.writeError(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -107,10 +124,14 @@ func (h *Handler) handleStats(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) handleTimeline(rw http.ResponseWriter, req *http.Request) {
+	window, ok := h.readWindow(rw, req)
+	if !ok {
+		return
+	}
 	timeRange := req.URL.Query().Get("range")
 	provider := req.URL.Query().Get("provider")
 
-	timeline, err := h.worker.Storage().GetTimeline(timeRange, provider)
+	timeline, err := h.worker.Storage().getTimeline(window, timeRange, provider)
 	if err != nil {
 		h.writeError(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -119,9 +140,12 @@ func (h *Handler) handleTimeline(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) handleProviders(rw http.ResponseWriter, req *http.Request) {
-	timeRange := req.URL.Query().Get("range")
+	window, ok := h.readWindow(rw, req)
+	if !ok {
+		return
+	}
 
-	rankings, err := h.worker.Storage().GetProviderRankings(timeRange)
+	rankings, err := h.worker.Storage().getProviderRankings(window)
 	if err != nil {
 		h.writeError(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -130,10 +154,13 @@ func (h *Handler) handleProviders(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) handleModels(rw http.ResponseWriter, req *http.Request) {
-	timeRange := req.URL.Query().Get("range")
+	window, ok := h.readWindow(rw, req)
+	if !ok {
+		return
+	}
 	provider := req.URL.Query().Get("provider")
 
-	rankings, err := h.worker.Storage().GetModelRankings(timeRange, provider)
+	rankings, err := h.worker.Storage().getModelRankings(window, provider)
 	if err != nil {
 		h.writeError(rw, http.StatusInternalServerError, err.Error())
 		return
@@ -142,10 +169,13 @@ func (h *Handler) handleModels(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) handleAccounts(rw http.ResponseWriter, req *http.Request) {
-	timeRange := req.URL.Query().Get("range")
+	window, ok := h.readWindow(rw, req)
+	if !ok {
+		return
+	}
 	provider := req.URL.Query().Get("provider")
 
-	rankings, err := h.worker.Storage().GetAccountRankings(timeRange, provider)
+	rankings, err := h.worker.Storage().getAccountRankings(window, provider)
 	if err != nil {
 		h.writeError(rw, http.StatusInternalServerError, err.Error())
 		return

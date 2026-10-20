@@ -732,6 +732,42 @@ test('Ego labels resolve auth identifiers without reading secret account fields'
   assert.equal(egoAccountLabel('file.json', [{ name: 'file.json' }], 'email'), 'file');
 });
 
+test('Today appears first, persists and shares one calendar window across analytics, never settings', async () => {
+  const html = fs.readFileSync(path.join(__dirname, '../assets/index.html'), 'utf8');
+  const ranges = html.match(/id="ego-time-ranges">([\s\S]*?)<\/div>/)[1];
+  assert.deepEqual([...ranges.matchAll(/data-range="([^"]+)"/g)].map(match => match[1]), ['today', '1h', '24h', '7d', '30d', 'all']);
+  const urls = [];
+  let now = new Date(2025, 2, 9, 23, 59, 59).getTime();
+  class Clock extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  const dashboard = loadDashboard(async url => {
+    urls.push(url);
+    now += 1000; // Fetch crosses midnight; every request must keep the same snapshot.
+    return { ok: true, json: async () => url.includes('/stats?')
+      ? { total_requests: 0, total_success: 0, total_failed: 0 }
+      : url.endsWith('/settings') ? { total_records: 0 } : [] };
+  }, '1.0.0', { Date: Clock });
+  assert.equal(dashboard.loadUiPrefs().egoRange, '24h');
+  dashboard.setEgoRange('today');
+  assert.equal(dashboard.loadUiPrefs().egoRange, 'today');
+  const start = new Date(2025, 2, 9).getTime();
+  const end = new Date(2025, 2, 10).getTime();
+  await dashboard.loadEgoOverview();
+  assert.equal(urls.length, 6);
+  const analytics = urls.filter(url => !url.endsWith('/settings'));
+  assert.equal(analytics.length, 5);
+  for (const url of analytics) {
+    const params = new URL(url, 'http://test.local').searchParams;
+    assert.equal(params.get('range'), 'today');
+    assert.equal(params.get('start'), String(start));
+    assert.equal(params.get('end'), String(end));
+  }
+  dashboard.setEgoRange('invalid');
+  assert.equal(dashboard.loadUiPrefs().egoRange, '24h');
+});
+
 function createJwt(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -889,6 +925,7 @@ function loadDashboard(fetchImpl = async () => ({ ok: false, status: 500 }), plu
     if (idx >= 0) timers.splice(idx, 1);
   };
   const context = {
+    Date: storageOptions.Date || Date,
     console,
     confirm: () => true,
     fetch: fetchImpl,
