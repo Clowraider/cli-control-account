@@ -1,131 +1,149 @@
 package ego
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
 	"testing"
 )
 
-func TestPricing_EmbeddedRatesAndFuzzyMatching(t *testing.T) {
-	// Build map from DefaultCuratedPricing
-	pricingMap := make(map[string]ModelPricing)
-	for _, p := range DefaultCuratedPricing {
-		pricingMap[p.Model] = p
+func TestPricing_PinnedCatalog(t *testing.T) {
+	data, err := os.ReadFile("assets/pricing.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	requiredModels := []string{
-		"claude-3-7-sonnet",
-		"claude-3-5-sonnet",
-		"claude-3-5-haiku",
-		"claude-3-opus",
-		"gpt-4o",
-		"gpt-4o-mini",
-		"o1",
-		"o3-mini",
-		"gemini-3.8-flash-high",
-		"gemini-2.0-flash",
-		"gemini-2.0-pro",
-		"gemini-1.5-pro",
-		"gemini-1.5-flash",
-		"deepseek-chat",
-		"deepseek-reasoner",
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil {
+		t.Fatal(err)
 	}
-
-	for _, model := range requiredModels {
-		p, ok := FindModelPricing(pricingMap, model)
-		if !ok {
-			t.Errorf("expected embedded model %q to be found", model)
+	if len(entries) != 4219 {
+		t.Errorf("catalog entries = %d, want 4219 source models", len(entries))
+	}
+	previous := ""
+	for _, entry := range entries {
+		var model string
+		if err := json.Unmarshal(entry["m"], &model); err != nil {
+			t.Fatal(err)
 		}
-		if p.InputCostPerToken <= 0 {
-			t.Errorf("model %q has zero or negative input cost: %f", model, p.InputCostPerToken)
+		if model <= previous {
+			t.Fatalf("catalog not strictly sorted at %q", model)
 		}
-		if p.OutputCostPerToken <= 0 {
-			t.Errorf("model %q has zero or negative output cost: %f", model, p.OutputCostPerToken)
-		}
+		previous = model
 	}
-
-	// Fuzzy matching test cases
-	fuzzyCases := []struct {
-		name          string
-		inputModel    string
-		expectedModel string
-	}{
-		{
-			name:          "dated claude snapshot",
-			inputModel:    "claude-3-7-sonnet-20250219",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "anthropic provider prefix",
-			inputModel:    "anthropic/claude-3-7-sonnet",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "dotted version format",
-			inputModel:    "claude-3.7-sonnet",
-			expectedModel: "claude-3-7-sonnet",
-		},
-		{
-			name:          "dated 3.5 sonnet",
-			inputModel:    "claude-3-5-sonnet-20241022",
-			expectedModel: "claude-3-5-sonnet",
-		},
-		{
-			name:          "longest prefix gpt-4o-mini",
-			inputModel:    "openai/gpt-4o-mini-2024-07-18",
-			expectedModel: "gpt-4o-mini",
-		},
-		{
-			name:          "google models prefix",
-			inputModel:    "models/gemini-2.0-flash",
-			expectedModel: "gemini-2.0-flash",
-		},
-		{
-			name:          "deepseek prefix",
-			inputModel:    "deepseek/deepseek-chat",
-			expectedModel: "deepseek-chat",
-		},
-		{
-			name:          "deepseek reasoning alias",
-			inputModel:    "deepseek-r1",
-			expectedModel: "deepseek-r1",
-		},
-		{
-			name:          "gemini-3.8-flash-high exact",
-			inputModel:    "gemini-3.8-flash-high",
-			expectedModel: "gemini-3.8-flash-high",
-		},
-		{
-			name:          "gemini flash variant with prefix",
-			inputModel:    "antigravity/gemini-3.8-flash-high",
-			expectedModel: "gemini-3.8-flash-high",
-		},
-		{
-			name:          "tag suffix with colon",
-			inputModel:    "gpt-4o:latest",
-			expectedModel: "gpt-4o",
-		},
+	provenance, err := os.ReadFile("assets/pricing-source.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, tc := range fuzzyCases {
-		t.Run(tc.name, func(t *testing.T) {
-			p, ok := FindModelPricing(pricingMap, tc.inputModel)
-			if !ok {
-				t.Fatalf("expected fuzzy match for %q, got none", tc.inputModel)
-			}
-			if p.Model != tc.expectedModel && stringsTrimDash(p.Model) != stringsTrimDash(tc.expectedModel) {
-				t.Errorf("for input %q: expected match %q, got %q", tc.inputModel, tc.expectedModel, p.Model)
-			}
-		})
+	var p map[string]string
+	if err := json.Unmarshal(provenance, &p); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(data)
+	if p["raw_sha256"] != "da798353b3d14c09a13f2f1fe42eaf903212c158bb6d94d724836225c68d865d" || p["generated_sha256"] != hex.EncodeToString(hash[:]) {
+		t.Fatalf("catalog provenance hash mismatch: %+v", p)
+	}
+	if p["source_url"] != "https://raw.githubusercontent.com/BerriAI/litellm/cfee0ffe4186e2ac36cfaee4c4e10f6c3daafd2f/model_prices_and_context_window.json" {
+		t.Fatalf("unexpected source URL: %q", p["source_url"])
+	}
+	if p["commit"] != "cfee0ffe4186e2ac36cfaee4c4e10f6c3daafd2f" || p["source_date"] != "2026-10-18T08:58:40Z" || p["downloaded_at"] == "" || p["license"] != "MIT" {
+		t.Fatalf("incomplete pinned provenance: %+v", p)
 	}
 }
 
-func stringsTrimDash(s string) string {
-	res := make([]rune, 0, len(s))
-	for _, r := range s {
-		if r != '.' && r != '-' {
-			res = append(res, r)
+func TestPricing_ExactKeysDoNotInventAliases(t *testing.T) {
+	prices := map[string]ModelPricing{
+		"claude-5":          {Model: "claude-5", InputCostPerToken: 1},
+		"gemini-3.8-flash":  {Model: "gemini-3.8-flash", InputCostPerToken: 2},
+		"gemini-pro":        {Model: "gemini-pro", InputCostPerToken: 3},
+		"vendor/model:paid": {Model: "vendor/model:paid", InputCostPerToken: 4},
+		"model":             {Model: "model", InputCostPerToken: 5},
+	}
+	for _, name := range []string{"claude-5.5", "claude-5-20990101", "gemini-pro-agent", "other/model"} {
+		t.Run(name, func(t *testing.T) {
+			if price, ok := FindModelPricing(prices, name); ok {
+				t.Fatalf("unverified model %q resolved to %q", name, price.Model)
+			}
+		})
+	}
+	for _, name := range []string{"claude-5", "vendor/model:paid"} {
+		t.Run(name, func(t *testing.T) {
+			price, ok := FindModelPricing(prices, name)
+			if !ok || price.Model != name {
+				t.Fatalf("exact source key %q not preserved: %+v, found=%v", name, price, ok)
+			}
+		})
+	}
+	// Explicit user-confirmed alias: Antigravity's high-thinking Flash is gemini-3.8-flash.
+	if price, ok := FindModelPricing(prices, "gemini-3.8-flash-high"); !ok || price.Model != "gemini-3.8-flash" || price.InputCostPerToken != 2 {
+		t.Fatalf("confirmed alias gemini-3.8-flash-high: %+v, found=%v", price, ok)
+	}
+}
+
+func TestPricing_SourceKeysAndRates(t *testing.T) {
+	entries, err := getEmbeddedPricing()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prices := make(map[string]ModelPricing, len(entries))
+	for _, entry := range entries {
+		prices[entry.Model] = entry
+	}
+	tests := []struct {
+		model         string
+		input, output float64
+	}{
+		{"gpt-6.1-sol", 0.000002, 0.00001},
+		{"gpt-6-sol", 0.000002, 0.00001},
+		{"gpt-5.6", 0.000004, 0.00002},
+		{"claude-opus-5-5", 0.000004, 0.00002},
+		{"claude-sonnet-5", 0.000002, 0.00001},
+		{"claude-sonnet-4-5", 0.000003, 0.000015},
+		{"gemini-3.8-flash", 0.00000075, 0.00000375},
+		{"us.anthropic.claude-opus-5-5", 0.0000044, 0.000022},
+		{"vertex_ai/claude-sonnet-4-5@20250929", 0.000003, 0.000015},
+		{"claude-sonnet-4-5-20250929", 0.000003, 0.000015},
+		{"gpt-4o", 0.0000025, 0.00001},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			p, ok := FindModelPricing(prices, tt.model)
+			if !ok || p.Model != tt.model || p.InputCostPerToken != tt.input || p.OutputCostPerToken != tt.output {
+				t.Fatalf("source rates for %s: %+v, found=%v", tt.model, p, ok)
+			}
+		})
+	}
+	if p, ok := FindModelPricing(prices, "gemini-3.8-flash-high"); !ok || p.InputCostPerToken != 0.00000075 || p.OutputCostPerToken != 0.00000375 {
+		t.Errorf("confirmed alias gemini-3.8-flash-high must use gemini-3.8-flash source rates: %+v, found=%v", p, ok)
+	}
+	for _, model := range []string{"gemini-pro-agent", "claude-sonnet-5-9", "gpt-6.2-sol", "gpt-4o:latest", "other/gpt-4o"} {
+		if p, ok := FindModelPricing(prices, model); ok {
+			t.Errorf("unverified alias %q priced as %q", model, p.Model)
 		}
 	}
-	return string(res)
+	if p, ok := FindModelPricing(prices, " GPT-4O "); !ok || p.Model != "gpt-4o" {
+		t.Errorf("same-name normalization: %+v, found=%v", p, ok)
+	}
+}
+
+func TestPricing_MissingCacheRatesKeepExistingFallbacks(t *testing.T) {
+	price := ModelPricing{InputCostPerToken: 0.000002, OutputCostPerToken: 0.00001}
+	for _, tt := range []struct {
+		provider string
+		want     float64
+	}{
+		{"openai", 0.0002},
+		{"gemini", 0.0002},
+		{"anthropic", 0.000425},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			// Missing cache fields must not make either kind of cached token free.
+			total, _, _ := CalculateTokenCost(price, tt.provider, 100, 0, 0, 50, 50)
+			if diff := total - tt.want; diff > 1e-12 || diff < -1e-12 {
+				t.Fatalf("missing cache fallback: got %g, want %g", total, tt.want)
+			}
+		})
+	}
 }
 
 func TestPricing_CalculateCostFormula(t *testing.T) {

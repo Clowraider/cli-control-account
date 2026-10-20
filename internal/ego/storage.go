@@ -207,19 +207,14 @@ func (s *Storage) initPricing() error {
 
 	now := time.Now().UnixMilli()
 
-	// 1. Seed base models from embedded LiteLLM pricing dataset (~4,300 models)
-	if embeddedModels, err := getEmbeddedPricing(); err == nil {
-		for _, p := range embeddedModels {
-			if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
-				return fmt.Errorf("failed to seed embedded pricing: %w", err)
-			}
-		}
+	// Seed only verified embedded source rates; manual tariffs are not aliases.
+	embeddedModels, err := getEmbeddedPricing()
+	if err != nil {
+		return fmt.Errorf("failed to load embedded pricing: %w", err)
 	}
-
-	// 2. Curated models override embedded ones (e.g. specific cache creation 1.25x for Claude, Gemini 3.8 variants)
-	for _, p := range DefaultCuratedPricing {
+	for _, p := range embeddedModels {
 		if _, err := stmt.Exec(p.Model, p.InputCostPerToken, p.OutputCostPerToken, p.CacheReadInputTokenCost, p.CacheCreationInputTokenCost, now); err != nil {
-			return fmt.Errorf("failed to seed curated pricing: %w", err)
+			return fmt.Errorf("failed to seed embedded pricing: %w", err)
 		}
 	}
 
@@ -237,13 +232,29 @@ func (s *Storage) loadPricingCacheLocked() error {
 	}
 	defer rows.Close()
 
+	// Old databases can retain obsolete manual aliases. Only source-backed keys
+	// enter the active cache, and their pinned rates always win.
+	embedded, err := getEmbeddedPricing()
+	if err != nil {
+		return err
+	}
+	source := make(map[string]ModelPricing, len(embedded))
+	for _, p := range embedded {
+		source[p.Model] = p
+	}
 	cache := make(map[string]ModelPricing)
 	for rows.Next() {
 		var p ModelPricing
 		if err := rows.Scan(&p.Model, &p.InputCostPerToken, &p.OutputCostPerToken, &p.CacheReadInputTokenCost, &p.CacheCreationInputTokenCost, &p.UpdatedAt); err != nil {
 			return fmt.Errorf("failed to scan ego pricing row: %w", err)
 		}
-		cache[p.Model] = p
+		if verified, ok := source[p.Model]; ok {
+			verified.UpdatedAt = p.UpdatedAt
+			cache[p.Model] = verified
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
 	}
 	s.pricingCache = cache
 	return nil
@@ -276,7 +287,8 @@ func (s *Storage) GetAllPricing() []ModelPricing {
 	return list
 }
 
-// UpsertPricingBatch inserts or updates model pricing records in SQLite and refreshes the cache.
+// UpsertPricingBatch persists pricing records and refreshes the source-backed cache.
+// Only pinned embedded keys/rates are exposed; unverified database tariffs stay inactive.
 func (s *Storage) UpsertPricingBatch(pricing []ModelPricing) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("storage is nil or closed")
@@ -491,7 +503,8 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 			COALESCE(SUM(completion_tokens), 0),
 			COALESCE(SUM(reasoning_tokens), 0),
 			COALESCE(SUM(cached_tokens), 0),
-			COALESCE(SUM(cache_creation_tokens), 0)
+			COALESCE(SUM(cache_creation_tokens), 0),
+			COUNT(*)
 		FROM ego_events
 		WHERE timestamp >= ?
 	`
@@ -511,18 +524,25 @@ func (s *Storage) GetSummary(timeRange string, provider string) (*SummaryStats, 
 	var totalCost, promptCost, outputCost float64
 	for costRows.Next() {
 		var modelName, provName string
-		var pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens int64
-		if err := costRows.Scan(&modelName, &provName, &pTokens, &cTokens, &rTokens, &cachedTokens, &cacheCreationTokens); err != nil {
+		var pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens, requests int64
+		if err := costRows.Scan(&modelName, &provName, &pTokens, &cTokens, &rTokens, &cachedTokens, &cacheCreationTokens, &requests); err != nil {
 			return nil, fmt.Errorf("failed to scan model cost row: %w", err)
 		}
 
-		pricing, _ := FindModelPricing(s.pricingCache, modelName)
+		pricing, matched := FindModelPricing(s.pricingCache, modelName)
+		if !matched || (pricing.InputCostPerToken <= 0 && pricing.OutputCostPerToken <= 0) {
+			stats.UnpricedRequests += requests
+		}
 		tot, inC, outC := CalculateTokenCost(pricing, provName, pTokens, cTokens, rTokens, cachedTokens, cacheCreationTokens)
 		totalCost += tot
 		promptCost += inC
 		outputCost += outC
 	}
 
+	if err := costRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read model cost aggregates: %w", err)
+	}
+	stats.IsPartial = stats.UnpricedRequests > 0
 	stats.EstimatedCostUSD = math.Round(totalCost*10000) / 10000
 	stats.InputCostUSD = math.Round(promptCost*10000) / 10000
 	stats.OutputCostUSD = math.Round(outputCost*10000) / 10000

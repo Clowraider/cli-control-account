@@ -1,0 +1,13 @@
+{
+  "source_url": "https://raw.githubusercontent.com/BerriAI/litellm/cfee0ffe4186e2ac36cfaee4c4e10f6c3daafd2f/model_prices_and_context_window.json",
+  "commit": "cfee0ffe4186e2ac36cfaee4c4e10f6c3daafd2f",
+  "source_date": "2026-10-18T08:58:40Z",
+  "downloaded_at": "2026-10-18T18:38:54.327380Z",
+  "raw_sha256": "da798353b3d14c09a13f2f1fe42eaf903212c158bb6d94d724836225c68d865d",
+  "generated_sha256": "886f434eb70f1f1b01f417381f86946c14bfbf7e3da42507af8399353723fb5d",
+  "license": "MIT",
+  "attribution": "Copyright (c) 2023 Berri AI",
+  "license_url": "https://raw.githubusercontent.com/BerriAI/litellm/cfee0ffe4186e2ac36cfaee4c4e10f6c3daafd2f/LICENSE",
+  "license_notice": "MIT License\n\nCopyright (c) 2023 Berri AI\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "projection": "All 4219 source model keys, sorted; sample_spec excluded. Only flat standard input/output/cache-read/cache-creation per-token rates are projected. Missing cache rates remain omitted; existing estimator fallbacks apply. Provider, capability, modality, regional, context, batch, flex, priority and other source metadata/rates are not represented; consult pinned source for them."
+}

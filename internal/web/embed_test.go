@@ -401,7 +401,15 @@ func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
 
 	html := string(data)
 	requiredElements := []string{
-		"Estimated Retail Value",
+		"API-equivalent Estimate",
+		`id="ego-pricing-notice" title="API-equivalent estimate, not a subscription bill."`,
+		"pricingNotice.title = stats.is_partial",
+		`<span>Input: <strong id="ego-kpi-prompt-cost"`,
+		`<span>Output: <strong id="ego-kpi-output-cost"`,
+		"Partial API-equivalent estimate (total, input and output)",
+		"unpriced_requests",
+		"stats.is_partial",
+		"not a subscription bill",
 		"ego-kpi-cost",
 		"ego-kpi-prompt-cost",
 		"ego-kpi-output-cost",
@@ -412,8 +420,11 @@ func TestEmbeddedDashboard_EgoRetailPricing(t *testing.T) {
 
 	for _, elem := range requiredElements {
 		if !strings.Contains(html, elem) {
-			t.Errorf("expected index.html to contain retail pricing element %q", elem)
+			t.Errorf("expected index.html to contain API-equivalent pricing element %q", elem)
 		}
+	}
+	if strings.Contains(html, `<span id="ego-pricing-notice"`) {
+		t.Error("pricing explanation must be native hover text, not an inline notice")
 	}
 }
 

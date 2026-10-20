@@ -1,274 +1,37 @@
 package ego
 
-import (
-	"regexp"
-	"strings"
-)
+import "strings"
 
-// DefaultCuratedPricing provides offline embedded rates per token in USD for mainstream models.
-var DefaultCuratedPricing = []ModelPricing{
-	// Claude Models (Anthropic) - Cache creation is 1.25x input token cost
-	{Model: "claude-3-7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3.7-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3-5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3.5-sonnet", InputCostPerToken: 0.000003, OutputCostPerToken: 0.000015, CacheReadInputTokenCost: 0.0000003, CacheCreationInputTokenCost: 0.00000375},
-	{Model: "claude-3-5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
-	{Model: "claude-3.5-haiku", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000004, CacheReadInputTokenCost: 0.00000008, CacheCreationInputTokenCost: 0.000001},
-	{Model: "claude-3-opus", InputCostPerToken: 0.000015, OutputCostPerToken: 0.000075, CacheReadInputTokenCost: 0.0000015, CacheCreationInputTokenCost: 0.00001875},
-
-	// OpenAI Models
-	{Model: "gpt-4o", InputCostPerToken: 0.0000025, OutputCostPerToken: 0.00001, CacheReadInputTokenCost: 0.00000125},
-	{Model: "gpt-4o-mini", InputCostPerToken: 0.00000015, OutputCostPerToken: 0.0000006, CacheReadInputTokenCost: 0.000000075},
-	{Model: "o1", InputCostPerToken: 0.000015, OutputCostPerToken: 0.00006, CacheReadInputTokenCost: 0.0000075},
-	{Model: "o1-preview", InputCostPerToken: 0.000015, OutputCostPerToken: 0.00006, CacheReadInputTokenCost: 0.0000075},
-	{Model: "o1-mini", InputCostPerToken: 0.0000011, OutputCostPerToken: 0.0000044, CacheReadInputTokenCost: 0.00000055},
-	{Model: "o3-mini", InputCostPerToken: 0.0000011, OutputCostPerToken: 0.0000044, CacheReadInputTokenCost: 0.00000055},
-
-	// Gemini Models (Google)
-	{Model: "gemini-3.8-flash-high", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-3.8-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-3.8-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.5-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.5-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.0-flash-thinking", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-flash-exp", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-2.0-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-2.0-pro-exp", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-1.5-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-	{Model: "gemini-1.5-flash", InputCostPerToken: 0.000000075, OutputCostPerToken: 0.0000003, CacheReadInputTokenCost: 0.00000001875},
-	{Model: "gemini-flash", InputCostPerToken: 0.0000001, OutputCostPerToken: 0.0000004, CacheReadInputTokenCost: 0.000000025},
-	{Model: "gemini-pro", InputCostPerToken: 0.00000125, OutputCostPerToken: 0.000005, CacheReadInputTokenCost: 0.0000003125},
-
-	// DeepSeek Models
-	{Model: "deepseek-chat", InputCostPerToken: 0.00000014, OutputCostPerToken: 0.00000028, CacheReadInputTokenCost: 0.000000014},
-	{Model: "deepseek-v3", InputCostPerToken: 0.00000014, OutputCostPerToken: 0.00000028, CacheReadInputTokenCost: 0.000000014},
-	{Model: "deepseek-reasoner", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
-	{Model: "deepseek-r1", InputCostPerToken: 0.00000055, OutputCostPerToken: 0.00000219, CacheReadInputTokenCost: 0.00000014},
-
-	// xAI (Grok) Models
-	{Model: "grok-2", InputCostPerToken: 0.000002, OutputCostPerToken: 0.00001},
-	{Model: "grok-2-mini", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000001},
-	{Model: "grok-beta", InputCostPerToken: 0.000005, OutputCostPerToken: 0.000015},
-
-	// Kimi / Moonshot Models
-	{Model: "moonshot-v1-8k", InputCostPerToken: 0.0000002, OutputCostPerToken: 0.000002},
-	{Model: "moonshot-v1-32k", InputCostPerToken: 0.000001, OutputCostPerToken: 0.000003},
-	{Model: "moonshot-v1-128k", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000005},
-	{Model: "kimi-k1.5", InputCostPerToken: 0.0000006, OutputCostPerToken: 0.000003},
-
-	// Qwen & Mistral
-	{Model: "qwen-2.5-coder-32b", InputCostPerToken: 0.0000008, OutputCostPerToken: 0.000002},
-	{Model: "mistral-large", InputCostPerToken: 0.000002, OutputCostPerToken: 0.000006},
-	{Model: "codestral", InputCostPerToken: 0.0000003, OutputCostPerToken: 0.0000009},
-}
-
-var dateSuffixRegex = regexp.MustCompile(`-(?:20\d{2}[01]\d[0-3]\d|20\d{2}-[01]\d-[0-3]\d|\d{4})$`)
-
-// NormalizeModelName normalizes a model string by removing provider prefixes,
-// tag/version specifiers, and lowercasing.
+// NormalizeModelName normalizes only case and surrounding whitespace. Provider,
+// version, date and tag components are part of the source key, not aliases.
 func NormalizeModelName(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	if s == "" {
-		return ""
-	}
-
-	// Strip provider prefix if present (e.g. anthropic/claude-3-7-sonnet or models/gemini-2.0-flash)
-	if idx := strings.LastIndex(s, "/"); idx >= 0 {
-		s = s[idx+1:]
-	}
-
-	// Strip version/tag suffixes after : or @ if present
-	if idx := strings.IndexAny(s, "@:"); idx >= 0 {
-		s = s[:idx]
-	}
-
-	return strings.TrimSpace(s)
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// FindModelPricing looks up the pricing for a model in the pricing map, performing
-// exact match, dot-to-dash normalization, date suffix stripping, and longest-prefix fuzzy matching.
+// confirmedAliases maps provider model names to the exact source key they bill as.
+// Only add names confirmed to be the same model; everything else stays unpriced.
+var confirmedAliases = map[string]string{
+	// Antigravity's high-thinking variant of Gemini 3.8 Flash.
+	"gemini-3.8-flash-high": "gemini-3.8-flash",
+}
+
+// FindModelPricing preserves exact source keys before conservative same-name
+// normalization and explicitly confirmed aliases. Unknown versions and provider
+// aliases deliberately stay unpriced.
 func FindModelPricing(pricingMap map[string]ModelPricing, modelName string) (ModelPricing, bool) {
-	if len(pricingMap) == 0 {
-		return ModelPricing{Model: modelName}, false
-	}
-
-	normalized := NormalizeModelName(modelName)
-	if normalized == "" {
-		return ModelPricing{Model: modelName}, false
-	}
-
-	// 1. Direct exact match on normalized name
-	if p, ok := pricingMap[normalized]; ok {
+	if p, ok := pricingMap[modelName]; ok {
 		return p, true
 	}
-
-	// 2. Try normalized with dots converted to hyphens
-	withHyphens := strings.ReplaceAll(normalized, ".", "-")
-	if p, ok := pricingMap[withHyphens]; ok {
-		return p, true
-	}
-
-	// 3. Try stripped date suffix (e.g. claude-3-7-sonnet-20250219 -> claude-3-7-sonnet)
-	dateStripped := dateSuffixRegex.ReplaceAllString(normalized, "")
-	if dateStripped != normalized {
-		if p, ok := pricingMap[dateStripped]; ok {
+	if normalized := NormalizeModelName(modelName); normalized != "" {
+		if p, ok := pricingMap[normalized]; ok {
 			return p, true
 		}
-		dateStrippedHyphens := strings.ReplaceAll(dateStripped, ".", "-")
-		if p, ok := pricingMap[dateStrippedHyphens]; ok {
-			return p, true
-		}
-	}
-
-	// 4. Fuzzy longest prefix match
-	// Find all entries in pricingMap that are a prefix of normalized (or dateStripped)
-	var bestMatch ModelPricing
-	var bestLen int
-
-	searchTargets := []string{normalized, withHyphens}
-	if dateStripped != normalized {
-		searchTargets = append(searchTargets, dateStripped)
-	}
-
-	for k, v := range pricingMap {
-		kNorm := strings.ToLower(k)
-		for _, target := range searchTargets {
-			if strings.HasPrefix(target, kNorm) {
-				if len(kNorm) > bestLen {
-					bestLen = len(kNorm)
-					bestMatch = v
-				}
+		if target, ok := confirmedAliases[normalized]; ok {
+			if p, ok := pricingMap[target]; ok {
+				return p, true
 			}
 		}
 	}
-
-	if bestLen > 0 {
-		return bestMatch, true
-	}
-
-	// 5. Family / keyword fallback heuristic for variants or unlisted sub-models
-	target := normalized
-	switch {
-	case strings.Contains(target, "gemini"):
-		if strings.Contains(target, "flash") {
-			if p, ok := pricingMap["gemini-3.8-flash-high"]; ok {
-				return p, true
-			}
-			if p, ok := pricingMap["gemini-flash"]; ok {
-				return p, true
-			}
-			if p, ok := pricingMap["gemini-2.0-flash"]; ok {
-				return p, true
-			}
-		}
-		if strings.Contains(target, "pro") {
-			if p, ok := pricingMap["gemini-pro"]; ok {
-				return p, true
-			}
-			if p, ok := pricingMap["gemini-2.0-pro"]; ok {
-				return p, true
-			}
-		}
-	case strings.Contains(target, "claude"):
-		if strings.Contains(target, "sonnet") {
-			if p, ok := pricingMap["claude-3-5-sonnet"]; ok {
-				return p, true
-			}
-			if p, ok := pricingMap["claude-3-7-sonnet"]; ok {
-				return p, true
-			}
-		} else if strings.Contains(target, "haiku") {
-			if p, ok := pricingMap["claude-3-5-haiku"]; ok {
-				return p, true
-			}
-		} else if strings.Contains(target, "opus") {
-			if p, ok := pricingMap["claude-3-opus"]; ok {
-				return p, true
-			}
-		}
-	case strings.Contains(target, "gpt-4o-mini"):
-		if p, ok := pricingMap["gpt-4o-mini"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "gpt-4o"):
-		if p, ok := pricingMap["gpt-4o"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "o3"):
-		if p, ok := pricingMap["o3-mini"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "o1"):
-		if p, ok := pricingMap["o1"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "deepseek"):
-		if strings.Contains(target, "r1") || strings.Contains(target, "reasoner") {
-			if p, ok := pricingMap["deepseek-r1"]; ok {
-				return p, true
-			}
-		}
-		if p, ok := pricingMap["deepseek-v3"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "grok"):
-		if strings.Contains(target, "mini") {
-			if p, ok := pricingMap["grok-2-mini"]; ok {
-				return p, true
-			}
-		}
-		if p, ok := pricingMap["grok-2"]; ok {
-			return p, true
-		}
-		if p, ok := pricingMap["grok-beta"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "kimi") || strings.Contains(target, "moonshot"):
-		if strings.Contains(target, "128k") {
-			if p, ok := pricingMap["moonshot-v1-128k"]; ok {
-				return p, true
-			}
-		}
-		if strings.Contains(target, "32k") {
-			if p, ok := pricingMap["moonshot-v1-32k"]; ok {
-				return p, true
-			}
-		}
-		if p, ok := pricingMap["moonshot-v1-8k"]; ok {
-			return p, true
-		}
-		if p, ok := pricingMap["kimi-k1.5"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "qwen"):
-		if strings.Contains(target, "coder") {
-			if p, ok := pricingMap["qwen-2.5-coder-32b"]; ok {
-				return p, true
-			}
-		}
-		if p, ok := pricingMap["qwen-plus"]; ok {
-			return p, true
-		}
-		if p, ok := pricingMap["qwen-turbo"]; ok {
-			return p, true
-		}
-	case strings.Contains(target, "mistral") || strings.Contains(target, "codestral"):
-		if strings.Contains(target, "codestral") {
-			if p, ok := pricingMap["codestral"]; ok {
-				return p, true
-			}
-		}
-		if strings.Contains(target, "small") {
-			if p, ok := pricingMap["mistral-small"]; ok {
-				return p, true
-			}
-		}
-		if p, ok := pricingMap["mistral-large"]; ok {
-			return p, true
-		}
-	}
-
 	return ModelPricing{Model: modelName}, false
 }
 
