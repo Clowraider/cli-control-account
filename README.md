@@ -33,6 +33,12 @@ Top accounts and credential utilization, detailed latency profiles, and non-bloc
 
 ---
 
+## Dashboard authentication
+
+The Quota and Ego views reuse the CPAMC remembered management key when readable (plaintext JSON, `enc::v1::`, or `enc::v2::`). **Remember password is optional:** if no readable saved key exists, enter your management key in the dashboard's password field and select **Connect**.
+
+Manual keys stay in page memory only, disappear on reload, and are never written to browser storage or URLs. The input is cleared on submission. A rejected key shows a 401 warning and lets you retry; if CPAMC has a saved but incorrect key, correct it by signing in to CPAMC again. Management API requests still require the same bearer authorization.
+
 ## 📦 Option 1: Quick Install with Precompiled Binaries (No compilation needed)
 
 No Go toolchain or C compiler is required. Download the pre-built `.so` file for your platform directly from [GitHub Releases](https://github.com/Clowraider/cli-control-account/releases/latest):

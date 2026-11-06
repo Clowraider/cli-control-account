@@ -2969,14 +2969,14 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
 
   function deobfuscateCPAMC(raw) {
     if (!raw || typeof raw !== 'string') return '';
-    const ENC_PREFIX = 'enc::v1::';
+    const ENC_PREFIX = raw.startsWith('enc::v2::') ? 'enc::v2::' : 'enc::v1::';
     const SECRET_SALT = 'cli-proxy-api-webui::secure-storage';
     if (!raw.startsWith(ENC_PREFIX)) return raw;
 
     try {
       const host = window.location.host;
       const ua = navigator.userAgent;
-      const keyStr = `${SECRET_SALT}|${host}|${ua}`;
+      const keyStr = ENC_PREFIX === 'enc::v2::' ? `${SECRET_SALT}|${host}` : `${SECRET_SALT}|${host}|${ua}`;
       const encoder = new TextEncoder();
       const keyBytes = encoder.encode(keyStr);
       
@@ -2998,6 +2998,8 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     }
   }
 
+  let manualManagementKey = '';
+
   function getManagementKey() {
     try {
       if (window.parent && window.parent.localStorage) {
@@ -3017,7 +3019,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
       }
     } catch (e) {}
 
-    return '';
+    return manualManagementKey;
   }
 
   async function apiFetch(endpoint, options = {}) {
@@ -3050,32 +3052,33 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     }
   }
 
+  function showManagementKeyPrompt(container, reload, invalid = false) {
+    container.innerHTML = `
+      <div class="auth-warning-box">
+        <h3 class="auth-warning-title">${invalid ? '401 Unauthorized / Clave no válida' : 'Authentication Required / Sesión no autenticada'}</h3>
+        <p class="auth-warning-desc">${invalid ? 'La clave fue rechazada por el servidor. ' : ''}Introduce la clave de administración para esta página solamente.
+          No se guarda y se pierde al recargar. También puedes iniciar sesión en CPAMC con <strong>"Remember password"</strong> para usar una clave guardada (JSON, v1 o v2).</p>
+        <form autocomplete="off">
+          <label>Management key <input type="password" autocomplete="off" required></label>
+          <button type="submit">Conectar / Connect</button>
+        </form>
+      </div>`;
+    const form = container.querySelector('form');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = form.querySelector('input');
+      const key = input.value.trim();
+      input.value = '';
+      if (!key) return;
+      manualManagementKey = key;
+      await reload();
+    });
+  }
+
   async function loadAuthFiles() {
     const key = getManagementKey();
     if (!key) {
-      console.warn('Management key not found in storage. "Remember password" in CPAMC may be unchecked.');
-      grid.innerHTML = `
-        <div class="auth-warning-box">
-          <div class="auth-warning-head">
-            <span class="auth-warning-icon">🔐</span>
-            <div>
-              <h3 class="auth-warning-title">Authentication Required / Sesión no autenticada</h3>
-            </div>
-          </div>
-          <p class="auth-warning-desc">
-            El plugin no pudo obtener la clave de administración (<strong>managementKey</strong>) desde el almacenamiento del navegador.<br>
-            En <strong>CPAMC</strong>, la clave solo se almacena de forma accesible para los plugins dentro del iframe cuando inicias sesión marcando la casilla <strong>"Remember password"</strong> (Recordar contraseña).
-          </p>
-          <div class="auth-warning-steps">
-            <strong>¿Cómo solucionarlo?</strong>
-            <ol>
-              <li>Cierra sesión o recarga la consola principal de <strong>CPAMC</strong>.</li>
-              <li>Al iniciar sesión, asegúrate de <strong>marcar la casilla "Remember password"</strong>.</li>
-              <li>Vuelve a abrir este panel de <strong>Control Account</strong>.</li>
-            </ol>
-          </div>
-        </div>
-      `;
+      showManagementKeyPrompt(grid, loadAuthFiles);
       return;
     }
 
@@ -3114,6 +3117,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
     } catch (err) {
       console.error('Error in loadAuthFiles:', err);
       if (err.message === '401_UNAUTHORIZED') {
+        manualManagementKey = '';
         grid.innerHTML = `
           <div class="auth-warning-box">
             <div class="auth-warning-head">
@@ -3124,10 +3128,11 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
             </div>
             <p class="auth-warning-desc">
               La clave de administración proporcionada fue rechazada por el servidor con error 401.<br>
-              Por favor, vuelve a iniciar sesión en CPAMC con la clave correcta y la casilla <strong>"Remember password"</strong> marcada.
+              Vuelve a iniciar sesión en CPAMC con la clave correcta y <strong>"Remember password"</strong>, o introduce la clave aquí si no hay una clave guardada legible.
             </p>
           </div>
         `;
+        if (!getManagementKey()) showManagementKeyPrompt(grid, loadAuthFiles, true);
       } else {
         grid.innerHTML = `<div class="state-box">Failed to load credentials from Management API: ${escapeHtml(err.message || String(err))}</div>`;
       }
@@ -5877,28 +5882,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
 
     if (!key) {
       if (egoWarn) {
-        egoWarn.innerHTML = `
-          <div class="auth-warning-box">
-            <div class="auth-warning-head">
-              <span class="auth-warning-icon">🔐</span>
-              <div>
-                <h3 class="auth-warning-title">Authentication Required / Sesión no autenticada</h3>
-              </div>
-            </div>
-            <p class="auth-warning-desc">
-              El plugin no pudo obtener la clave de administración (<strong>managementKey</strong>) desde el almacenamiento del navegador.<br>
-              En <strong>CPAMC</strong>, la clave solo se almacena de forma accesible para los plugins dentro del iframe cuando inicias sesión marcando la casilla <strong>"Remember password"</strong> (Recordar contraseña).
-            </p>
-            <div class="auth-warning-steps">
-              <strong>¿Cómo solucionarlo?</strong>
-              <ol>
-                <li>Cierra sesión o recarga la consola principal de <strong>CPAMC</strong>.</li>
-                <li>Al iniciar sesión, asegúrate de <strong>marcar la casilla "Remember password"</strong>.</li>
-                <li>Vuelve a abrir este panel de <strong>Control Account</strong>.</li>
-              </ol>
-            </div>
-          </div>
-        `;
+        showManagementKeyPrompt(egoWarn, loadEgoOverview);
         egoWarn.style.display = 'block';
       }
       return;
@@ -5941,6 +5925,7 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
       );
 
       if (is401) {
+        manualManagementKey = '';
         if (egoWarn) {
           egoWarn.innerHTML = `
             <div class="auth-warning-box">
@@ -5952,10 +5937,11 @@ body:has(#nav-btn-quota.active) { background-color: #151412; }
               </div>
               <p class="auth-warning-desc">
                 La clave de administración proporcionada fue rechazada por el servidor con error 401.<br>
-                Por favor, vuelve a iniciar sesión en CPAMC con la clave correcta y la casilla <strong>"Remember password"</strong> marcada.
+                Vuelve a iniciar sesión en CPAMC con la clave correcta y <strong>"Remember password"</strong>, o introduce la clave aquí si no hay una clave guardada legible.
               </p>
             </div>
           `;
+          if (!getManagementKey()) showManagementKeyPrompt(egoWarn, loadEgoOverview, true);
           egoWarn.style.display = 'block';
         }
       } else if (egoWarn) {
